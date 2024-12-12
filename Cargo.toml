@@ -1,0 +1,83 @@
+[package]
+name = "esp32-homecontrol"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+esp-backtrace = { version = "0.14.1", features = [
+    "esp32s3",
+    "exception-handler",
+    "panic-handler",
+    "defmt",
+] }
+esp-hal = { version = "0.22.0", features = ["esp32s3", "defmt"] }
+esp-alloc = { version = "0.5.0" }
+embedded-io = "0.6.1"
+embedded-io-async = "0.6.1"
+embassy-net = { version = "0.5.0", features = [
+    "tcp",
+    "udp",
+    "dns",
+    "dhcpv4",
+    "defmt",
+    "dhcpv4-hostname",
+] }
+
+esp-wifi = { version = "0.11.0", default-features = false, features = [
+    "esp32s3",
+    "serde",
+    "wifi",
+    "esp-alloc",
+    "defmt",
+] }
+heapless = { version = "0.8.0", default-features = false }
+defmt = "0.3.8"
+defmt-rtt = "0.4.1"
+embassy-executor = { version = "0.6.0", features = [
+    "task-arena-size-163840",
+    "defmt",
+] }
+embassy-time = { version = "0.3.1", features = ["defmt"] }
+esp-hal-embassy = { version = "0.5.0", features = [
+    "esp32s3",
+    "defmt",
+    "integrated-timers",
+] }
+rust-mqtt = { version = "0.3.0", default-features = false, features = [
+    "defmt",
+] }
+rand_core = "0.6.4"
+mipidsi = "0.8.0"
+display-interface-parallel-gpio = "0.7.0"
+embedded-text = "0.7.2"
+embedded-graphics = { version = "0.8.1", features = ["defmt"] }
+embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
+dht11 = "0.3.1"
+serde = { version = "1.0.215", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0.133", default-features = false, features = [
+    "alloc",
+] }
+embassy-futures = { version = "0.1.1", features = ["defmt"] }
+embassy-sync = { version = "0.6.0", features = ["defmt"] }
+static_cell = "2.1.0"
+display-interface = { version = "0.5.0", features = ["defmt-03"] }
+sntpc = { version = "0.4.0", default-features = false, features = ["async"] }
+smoltcp = { version = "0.12.0", default-features = false, features = [
+    "defmt",
+    "proto-ipv4",
+] }
+chrono = { version = "0.4.39", default-features = false }
+
+[profile.dev]
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1        # LLVM can perform better optimizations using a single thread
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 's'
+overflow-checks = false

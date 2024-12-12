@@ -1,0 +1,41 @@
+name: Continuous Integration
+
+on:
+  push:
+    paths-ignore:
+      - "**/README.md"
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  rust-checks:
+    name: Rust Checks
+    runs-on: ubuntu-latest
+    env:
+      MQTT_HOSTNAME: test.mosquitto.org
+      MQTT_USERNAME: username
+      MQTT_PASSWORD: password 
+      MQTT_PORT: 1883
+      WIFI_SSID: ssid
+      WIFI_PSK: password
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Setup Rust
+        uses: esp-rs/xtensa-toolchain@v1.5
+        with:
+          default: true
+          buildtargets: esp32
+          ldproxy: false
+      - name: Enable caching
+        uses: Swatinem/rust-cache@v2
+      - name: Run build
+        run: cargo build  --release
+      - name: Run fmt
+        run: cargo fmt --all -- --check --color always
+      - name: Run clippy
+        run: cargo clippy --all-features --workspace -- -D warnings
