@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(async_closure)]
+
 use alloc::format;
 use clock::Clock;
 use config::{DEEP_SLEEP_DURATION, MEASUREMENTS_NEEDED, MEASUREMENT_INTERVAL_SECONDS};
@@ -11,6 +12,7 @@ use embassy_executor::Spawner;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
     channel::Channel,
+    mutex::Mutex,
     signal::Signal,
 };
 use embassy_time::{Duration, Timer};
@@ -42,8 +44,19 @@ mod wifi;
 static CHANNEL: StaticCell<Channel<NoopRawMutex, SensorData, 3>> = StaticCell::new();
 static ENABLE_PUMP: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 
+/// Stored boot count between deep sleep cycles
+///
+/// This is a statically allocated variable and it is placed in the RTC Fast
+/// memory, which survives deep sleep.
+#[ram(rtc_fast)]
+static BOOT_COUNT: Mutex<CriticalSectionRawMutex, u64> = Mutex::new(0);
+
 #[main]
 async fn main(spawner: Spawner) {
+    let mut count = BOOT_COUNT.lock().await;
+    info!("Current boot count = {}", *count);
+    *count += 1;
+
     if let Err(error) = main_fallible(spawner).await {
         error!("Error while running firmware: {:?}", error);
     }
@@ -74,13 +87,10 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     )
     .await?;
 
-    let clock = if let Some(clock) = Clock::from_rtc_memory() {
-        info!("Clock loaded from RTC memory");
-        clock
-    } else {
-        info!("Synchronize clock from server");
-        Clock::from_server(stack).await?
-    };
+    info!("Synchronize clock from server");
+    let unix_time = ntp::get_unix_time(stack).await?;
+
+    let clock = Clock::new(unix_time as u64);
 
     if let Some(time) = clock.now() {
         info!("Now is {:?}", Debug2Format(&time));
@@ -144,14 +154,13 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     STOP_WIFI_SIGNAL.signal(());
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION);
     info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION);
-    clock.save_to_rtc_memory(deep_sleep_duration);
     enter_deep(peripherals.GPIO14, peripherals.LPWR, deep_sleep_duration);
 }
 
 #[derive(Debug, defmt::Format)]
 enum Error {
     Wifi(WifiError),
-    Clock(clock::Error),
+    Clock(ntp::Error),
     Display(display::Error),
 }
 
@@ -161,8 +170,8 @@ impl From<WifiError> for Error {
     }
 }
 
-impl From<clock::Error> for Error {
-    fn from(error: clock::Error) -> Self {
+impl From<ntp::Error> for Error {
+    fn from(error: ntp::Error) -> Self {
         Self::Clock(error)
     }
 }
