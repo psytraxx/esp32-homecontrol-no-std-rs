@@ -12,6 +12,14 @@ Built for [LilyGO T-Display-S3](https://github.com/Xinyuan-LilyGO/T-Display-S3) 
 - USB-C connector
 - Built-in battery management
 
+## Wiring
+
+- DHT11 (Temperature/Humidity) → GPIO1  
+- Relay for pump control → GPIO2 
+- Soil moisture sensor → GPIO11  
+- Water level sensor → GPIO12  
+
+
 ## Core Features
 
 - **Basic Control**
