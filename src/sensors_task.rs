@@ -21,6 +21,7 @@ const DHT11_RETRY_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 2010;
 const MOISTURE_MAX: u16 = 3895;
 const WATER_LEVEL_THRESHOLD: u16 = 1000;
+const SENSOR_COOLDOWN_MILLISECONDS: u64 = 10;
 
 pub struct SensorPeripherals {
     pub dht11_pin: GpioPin<1>,
@@ -59,11 +60,11 @@ pub async fn sensor_task(
         let mut sensor_data = SensorData::default();
 
         read_dht11(&mut dht11_sensor, &mut sensor_data).await;
-
+        Timer::after(Duration::from_millis(SENSOR_COOLDOWN_MILLISECONDS)).await;
         read_moisture(&mut adc2, &mut moisture_pin, &mut sensor_data);
-
+        Timer::after(Duration::from_millis(SENSOR_COOLDOWN_MILLISECONDS)).await;
         read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data);
-
+        Timer::after(Duration::from_millis(SENSOR_COOLDOWN_MILLISECONDS)).await;
         read_battery(&mut adc1, &mut battery_pin, &mut sensor_data);
 
         sender.send(sensor_data).await;
