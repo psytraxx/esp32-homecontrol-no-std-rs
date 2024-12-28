@@ -106,7 +106,7 @@ impl<'a> Display<'a> {
     }
 
     fn clear(&mut self) -> Result<(), Error> {
-        self.display.clear(RgbColor::BLUE)?;
+        self.display.clear(RgbColor::BLACK)?;
         Ok(())
     }
 }

@@ -4,7 +4,7 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Delay, Duration, Timer};
 use esp_hal::{
     analog::adc::{Adc, AdcCalCurve, AdcConfig, AdcPin, Attenuation},
-    gpio::{AnyPin, GpioPin, Level, OutputOpenDrain, Pull},
+    gpio::{GpioPin, Level, OutputOpenDrain, Pull},
     peripherals::{ADC1, ADC2},
     prelude::nb,
 };
@@ -15,9 +15,13 @@ use crate::{
     domain::{Sensor, SensorData, WaterLevel},
 };
 
-/// Interval to wait for sensor warmup
-const WARMUP_INTERVAL: Duration = Duration::from_millis(10);
 const BATTERY_VOLTAGE: u32 = 3700;
+const DHT11_MAX_RETRIES: u8 = 3;
+const DHT11_RETRY_DELAY_MS: u64 = 2000;
+const MOISTURE_MIN: u16 = 2010;
+const MOISTURE_MAX: u16 = 3895;
+const WATER_LEVEL_THRESHOLD: u16 = 1000;
+
 pub struct SensorPeripherals {
     pub dht11_pin: GpioPin<1>,
     pub battery_pin: GpioPin<4>,
@@ -54,16 +58,12 @@ pub async fn sensor_task(
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
-        Timer::after(WARMUP_INTERVAL).await;
-        read_dht11(&mut dht11_sensor, &mut sensor_data);
+        read_dht11(&mut dht11_sensor, &mut sensor_data).await;
 
-        Timer::after(WARMUP_INTERVAL).await;
         read_moisture(&mut adc2, &mut moisture_pin, &mut sensor_data);
 
-        Timer::after(WARMUP_INTERVAL).await;
         read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data);
 
-        Timer::after(WARMUP_INTERVAL).await;
         read_battery(&mut adc1, &mut battery_pin, &mut sensor_data);
 
         sender.send(sensor_data).await;
@@ -78,21 +78,35 @@ pub async fn sensor_task(
     }
 }
 
-fn read_dht11(dht11_sensor: &mut Dht11<OutputOpenDrain<AnyPin>>, sensor_data: &mut SensorData) {
-    match dht11_sensor.perform_measurement(&mut Delay) {
-        Ok(measurement) => {
-            let temperature = measurement.temperature / 10;
-            let humidity = measurement.humidity / 10;
+async fn read_dht11<'a>(
+    dht11_sensor: &mut Dht11<OutputOpenDrain<'a>>,
+    sensor_data: &mut SensorData,
+) {
+    let mut attempts = 0;
+    while attempts < DHT11_MAX_RETRIES {
+        match dht11_sensor.perform_measurement(&mut Delay) {
+            Ok(measurement) => {
+                let temperature = measurement.temperature / 10;
+                let humidity = measurement.humidity / 10;
 
-            info!(
-                "DHT11 reading... Temperature: {}°C, Humidity: {}%",
-                temperature, humidity
-            );
+                info!(
+                    "DHT11 reading... Temperature: {}°C, Humidity: {}%",
+                    temperature, humidity
+                );
 
-            sensor_data.data.push(Sensor::AirTemperature(temperature));
-            sensor_data.data.push(Sensor::AirHumidity(humidity));
+                sensor_data.data.push(Sensor::AirTemperature(temperature));
+                sensor_data.data.push(Sensor::AirHumidity(humidity));
+                return;
+            }
+            Err(_) => {
+                attempts += 1;
+                error!(
+                    "Error reading DHT11 sensor (attempt {}/{})",
+                    attempts, DHT11_MAX_RETRIES
+                );
+                Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
+            }
         }
-        Err(_) => error!("Error reading DHT11 sensor"),
     }
 }
 
@@ -152,17 +166,14 @@ fn read_battery(
 /// From our measurements, the sensor was in water at 3000 and in air at 4095.
 /// We normalize the values to be between 0 and 1, with 1 representing water and 0 representing air.
 fn normalise_humidity_data(readout: u16) -> f32 {
-    let min_value = 2010;
-    let max_value = 3895;
-    let normalized_value =
-        (readout.saturating_sub(min_value)) as f32 / (max_value - min_value) as f32;
-    // Invert the value
-    1.0 - normalized_value
+    let normalized =
+        (readout.saturating_sub(MOISTURE_MIN)) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32;
+    normalized.clamp(0.0, 1.0)
 }
 
 impl From<u16> for WaterLevel {
     fn from(value: u16) -> Self {
-        if value < 1000 {
+        if value < WATER_LEVEL_THRESHOLD {
             WaterLevel::Empty
         } else {
             WaterLevel::Full
