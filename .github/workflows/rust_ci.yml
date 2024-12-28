@@ -2,10 +2,13 @@ name: Continuous Integration
 
 on:
   push:
-    paths-ignore:
-      - "**/README.md"
+    branches: [main]
   pull_request:
-  workflow_dispatch:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -18,7 +21,7 @@ jobs:
     env:
       MQTT_HOSTNAME: test.mosquitto.org
       MQTT_USERNAME: username
-      MQTT_PASSWORD: password 
+      MQTT_PASSWORD: password
       MQTT_PORT: 1883
       WIFI_SSID: ssid
       WIFI_PSK: password
