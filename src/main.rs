@@ -161,6 +161,10 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     Timer::after(awake_duration).await;
     info!("Request to disconnect wifi");
     STOP_WIFI_SIGNAL.signal(());
+
+    // set power pin to low to save power
+    power_pin.set_low();
+
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION);
     info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION);
     enter_deep(peripherals.GPIO14, peripherals.LPWR, deep_sleep_duration);

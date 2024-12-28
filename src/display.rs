@@ -42,11 +42,13 @@ type MipiDisplayWrapper<'a> = MipiDisplay<
 
 pub struct Display<'a> {
     display: MipiDisplayWrapper<'a>,
+    backlight: Output<'a>,
 }
 
 pub trait DisplayTrait {
     fn write(&mut self, text: &str) -> Result<(), Error>;
     fn write_multiline(&mut self, text: &str) -> Result<(), Error>;
+    fn set_backlight(&mut self, enabled: bool);
 }
 
 pub struct DisplayPeripherals {
@@ -68,7 +70,7 @@ pub struct DisplayPeripherals {
 
 impl<'a> Display<'a> {
     pub fn new(p: DisplayPeripherals) -> Result<Self, Error> {
-        let mut backlight = Output::new(p.backlight, Level::Low);
+        let backlight = Output::new(p.backlight, Level::Low);
 
         let dc = Output::new(p.dc, Level::Low);
         let mut cs = Output::new(p.cs, Level::Low);
@@ -100,9 +102,7 @@ impl<'a> Display<'a> {
             .reset_pin(rst)
             .init(&mut embassy_time::Delay)?;
 
-        backlight.set_high();
-
-        Ok(Self { display })
+        Ok(Self { display, backlight })
     }
 
     fn clear(&mut self) -> Result<(), Error> {
@@ -136,6 +136,13 @@ impl<'a> DisplayTrait for Display<'a> {
         // Draw the text box.
         text_box.draw(&mut self.display)?;
         Ok(())
+    }
+
+    fn set_backlight(&mut self, enabled: bool) {
+        match enabled {
+            true => self.backlight.set_high(),
+            false => self.backlight.set_low(),
+        }
     }
 }
 

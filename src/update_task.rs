@@ -26,8 +26,8 @@ use static_cell::StaticCell;
 use crate::{
     clock::Clock,
     config::{
-        DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_SWITCH,
-        HOMEASSISTANT_SENSOR_TOPIC,
+        DEVICE_ID, DISPLAY_ON_DURATION_SECONDS, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
+        HOMEASSISTANT_SENSOR_SWITCH, HOMEASSISTANT_SENSOR_TOPIC,
     },
     display::{self, Display, DisplayTrait},
     domain::{Sensor, SensorData, WaterLevel},
@@ -225,6 +225,7 @@ async fn handle_sensor_data<'a>(
     }
 
     if let Some(now) = clock.now() {
+        display.set_backlight(true);
         display.write_multiline(&format!("Time: {}\n{}", now, sensor_data))?;
     }
 
@@ -245,7 +246,9 @@ async fn handle_sensor_data<'a>(
         )
         .await?;
 
-    Timer::after(Duration::from_millis(1000)).await;
+    Timer::after(Duration::from_millis(DISPLAY_ON_DURATION_SECONDS * 1000)).await;
+
+    display.set_backlight(false);
 
     Ok(())
 }
