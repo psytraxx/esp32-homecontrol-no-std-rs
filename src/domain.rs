@@ -44,7 +44,6 @@ pub enum Sensor {
     AirHumidity(u16),
     SoilMoisture(u16),
     BatteryVoltage(u32),
-    BatteryPercent(u32),
 }
 
 impl Sensor {
@@ -54,7 +53,6 @@ impl Sensor {
             Sensor::AirTemperature(_) => Some("°C"),
             Sensor::AirHumidity(_) => Some("%"),
             Sensor::BatteryVoltage(_) => Some("mV"),
-            Sensor::BatteryPercent(_) => Some("%"),
             Sensor::SoilMoisture(_) => Some("%"),
             _ => None,
         }
@@ -67,7 +65,6 @@ impl Sensor {
             Sensor::AirTemperature(_) => Some("temperature"),
             Sensor::AirHumidity(_) => Some("humidity"),
             Sensor::SoilMoisture(_) => Some("moisture"),
-            Sensor::BatteryPercent(_) => Some("battery"),
             Sensor::BatteryVoltage(_) => Some("voltage"),
             _ => None,
         }
@@ -81,7 +78,6 @@ impl Sensor {
             Sensor::SoilMoisture(_) => "moisture",
             Sensor::WaterLevel(_) => "waterlevel",
             Sensor::BatteryVoltage(_) => "batteryvoltage",
-            Sensor::BatteryPercent(_) => "batterypercent",
         }
     }
 
@@ -93,7 +89,6 @@ impl Sensor {
             Sensor::SoilMoisture(_) => "Soil moisture",
             Sensor::WaterLevel(_) => "Water level",
             Sensor::BatteryVoltage(_) => "Battery voltage",
-            Sensor::BatteryPercent(_) => "Battery percent",
         }
     }
 
@@ -105,7 +100,6 @@ impl Sensor {
             Sensor::SoilMoisture(v) => v.to_string(),
             Sensor::WaterLevel(v) => format!("{}", v),
             Sensor::BatteryVoltage(v) => v.to_string(),
-            Sensor::BatteryPercent(v) => v.to_string(),
         }
     }
 }

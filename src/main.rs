@@ -17,7 +17,12 @@ use embassy_sync::{
 };
 use embassy_time::{Duration, Timer};
 use esp_alloc::heap_allocator;
-use esp_hal::{prelude::*, rng::Rng, timer::timg::TimerGroup};
+use esp_hal::{
+    gpio::{Level, Output},
+    prelude::*,
+    rng::Rng,
+    timer::timg::TimerGroup,
+};
 use esp_wifi::wifi::WifiError;
 use relay_task::relay_task;
 use sensors_task::{sensor_task, SensorPeripherals};
@@ -68,6 +73,10 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
         config.cpu_clock = CpuClock::max();
         config
     });
+
+    // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
+    let mut power_pin = Output::new(peripherals.GPIO15, Level::Low);
+    power_pin.set_high();
 
     heap_allocator!(72 * 1024);
 

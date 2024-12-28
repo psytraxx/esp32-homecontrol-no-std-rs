@@ -17,7 +17,7 @@ use crate::{
 
 /// Interval to wait for sensor warmup
 const WARMUP_INTERVAL: Duration = Duration::from_millis(10);
-
+const BATTERY_VOLTAGE: u32 = 3700;
 pub struct SensorPeripherals {
     pub dht11_pin: GpioPin<1>,
     pub battery_pin: GpioPin<4>,
@@ -132,19 +132,19 @@ fn read_battery(
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
-    match nb::block!(adc.read_oneshot(pin)) {
-        Ok(raw) => {
-            let voltage = raw as u32 * 2;
-            let max_voltage = 4300;
-            let voltage = voltage.min(max_voltage);
-            let percent = (voltage * 100) / max_voltage;
+    if let Ok(raw) = nb::block!(adc.read_oneshot(pin)) {
+        let raw_mv = (raw as u32) * 2;
+        let is_usb = raw_mv > BATTERY_VOLTAGE;
+        let voltage = raw_mv.min(BATTERY_VOLTAGE);
 
-            info!("Battery voltage: {}mV ({}%)", voltage, percent);
-
-            sensor_data.data.push(Sensor::BatteryVoltage(voltage));
-            sensor_data.data.push(Sensor::BatteryPercent(percent));
-        }
-        Err(_) => error!("Error reading battery voltage"),
+        info!(
+            "Battery: {}mV{}",
+            voltage,
+            if is_usb { " [USB]" } else { "" }
+        );
+        sensor_data.data.push(Sensor::BatteryVoltage(voltage));
+    } else {
+        error!("Error reading battery voltage");
     }
 }
 

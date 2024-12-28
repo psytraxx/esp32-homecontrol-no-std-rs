@@ -2,6 +2,16 @@
 
 A microcontroller-based system for automated plant watering with ESP32. Monitor soil moisture and control watering pump.
 
+Built for [LilyGO T-Display-S3](https://github.com/Xinyuan-LilyGO/T-Display-S3) ESP32-S3 development board
+
+![T-Display-S3 Board](https://raw.githubusercontent.com/Xinyuan-LilyGO/T-Display-S3/refs/heads/main/image/T-DISPLAY-S3.jpg)
+
+**Board Features:**
+- ESP32-S3 dual-core MCU
+- 1.9" LCD Display (170x320)
+- USB-C connector
+- Built-in battery management
+
 ## Core Features
 
 - **Basic Control**
