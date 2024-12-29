@@ -12,6 +12,7 @@ use embedded_text::alignment::HorizontalAlignment;
 use embedded_text::style::{HeightMode, TextBoxStyleBuilder};
 use embedded_text::TextBox;
 use esp_hal::gpio::{GpioPin, Level, Output};
+use mipidsi::dcs::{EnterSleepMode, ExitSleepMode};
 use mipidsi::error::InitError;
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
@@ -48,7 +49,7 @@ pub struct Display<'a> {
 pub trait DisplayTrait {
     fn write(&mut self, text: &str) -> Result<(), Error>;
     fn write_multiline(&mut self, text: &str) -> Result<(), Error>;
-    fn set_backlight(&mut self, enabled: bool);
+    fn enable_powersave(&mut self) -> Result<(), Error>;
 }
 
 pub struct DisplayPeripherals {
@@ -105,7 +106,9 @@ impl<'a> Display<'a> {
         Ok(Self { display, backlight })
     }
 
-    fn clear(&mut self) -> Result<(), Error> {
+    fn disable_powersave(&mut self) -> Result<(), Error> {
+        self.backlight.set_high();
+        unsafe { self.display.dcs().write_command(ExitSleepMode) }?;
         self.display.clear(RgbColor::BLACK)?;
         Ok(())
     }
@@ -113,14 +116,14 @@ impl<'a> Display<'a> {
 
 impl<'a> DisplayTrait for Display<'a> {
     fn write(&mut self, text: &str) -> Result<(), Error> {
-        self.clear()?;
+        self.disable_powersave()?;
         Text::with_baseline(text, Point::new(0, 0), TEXT_STYLE, Baseline::Top)
             .draw(&mut self.display)?;
         Ok(())
     }
 
     fn write_multiline(&mut self, text: &str) -> Result<(), Error> {
-        self.clear()?;
+        self.disable_powersave()?;
         let textbox_style = TextBoxStyleBuilder::new()
             .height_mode(HeightMode::FitToText)
             .alignment(HorizontalAlignment::Justified)
@@ -138,11 +141,10 @@ impl<'a> DisplayTrait for Display<'a> {
         Ok(())
     }
 
-    fn set_backlight(&mut self, enabled: bool) {
-        match enabled {
-            true => self.backlight.set_high(),
-            false => self.backlight.set_low(),
-        }
+    fn enable_powersave(&mut self) -> Result<(), Error> {
+        self.backlight.set_low();
+        unsafe { self.display.dcs().write_command(EnterSleepMode)? };
+        Ok(())
     }
 }
 

@@ -56,6 +56,13 @@ pub async fn sensor_task(
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
     loop {
+        let sampling_period = Duration::from_secs(MEASUREMENT_INTERVAL_SECONDS);
+        let wait_interval = clock.duration_to_next_rounded_wakeup(sampling_period);
+        info!(
+            "Waiting {:?} seconds before reading sensors",
+            wait_interval.as_secs()
+        );
+        Timer::after(wait_interval).await;
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
@@ -68,14 +75,6 @@ pub async fn sensor_task(
         read_battery(&mut adc1, &mut battery_pin, &mut sensor_data);
 
         sender.send(sensor_data).await;
-
-        let sampling_period = Duration::from_secs(MEASUREMENT_INTERVAL_SECONDS);
-        let wait_interval = clock.duration_to_next_rounded_wakeup(sampling_period);
-        info!(
-            "Sensor data published to channel, waiting {:?} seconds",
-            wait_interval.as_secs()
-        );
-        Timer::after(wait_interval).await;
     }
 }
 

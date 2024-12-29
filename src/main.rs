@@ -4,7 +4,9 @@
 
 use alloc::format;
 use clock::Clock;
-use config::{DEEP_SLEEP_DURATION, MEASUREMENTS_NEEDED, MEASUREMENT_INTERVAL_SECONDS};
+use config::{
+    DEEP_SLEEP_DURATION_SECONDS, MEASUREMENT_INTERVAL_SECONDS, MIN_SENSOR_READINGS_BEFORE_SLEEP,
+};
 use defmt::{error, info, Debug2Format};
 use display::{Display, DisplayPeripherals, DisplayTrait};
 use domain::SensorData;
@@ -12,7 +14,6 @@ use embassy_executor::Spawner;
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
     channel::Channel,
-    mutex::Mutex,
     signal::Signal,
 };
 use embassy_time::{Duration, Timer};
@@ -54,13 +55,18 @@ static ENABLE_PUMP: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 /// This is a statically allocated variable and it is placed in the RTC Fast
 /// memory, which survives deep sleep.
 #[ram(rtc_fast)]
-static BOOT_COUNT: Mutex<CriticalSectionRawMutex, u64> = Mutex::new(0);
+static mut BOOT_COUNT: u32 = 0;
+
+#[ram(rtc_fast)]
+static mut DISCOVERY_MESSAGES_SENT: bool = false;
 
 #[main]
 async fn main(spawner: Spawner) {
-    let mut count = BOOT_COUNT.lock().await;
-    info!("Current boot count = {}", *count);
-    *count += 1;
+    let boot_count = unsafe { BOOT_COUNT };
+    info!("Current boot count = {}", boot_count);
+    unsafe {
+        BOOT_COUNT = boot_count + 1;
+    }
 
     if let Err(error) = main_fallible(spawner).await {
         error!("Error while running firmware: {:?}", error);
@@ -136,7 +142,7 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     let sender = channel.sender();
 
     spawner
-        .spawn(update_task(stack, display, receiver, clock.clone(), true))
+        .spawn(update_task(stack, display, receiver, clock.clone()))
         .ok();
 
     // see https://github.com/Xinyuan-LilyGO/T-Display-S3/blob/main/image/T-DISPLAY-S3.jpg
@@ -155,9 +161,10 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
 
     spawner.spawn(relay_task(peripherals.GPIO2)).ok();
 
-    let awake_duration = Duration::from_secs(MEASUREMENT_INTERVAL_SECONDS * MEASUREMENTS_NEEDED);
+    let awake_seconds = MEASUREMENT_INTERVAL_SECONDS * MIN_SENSOR_READINGS_BEFORE_SLEEP;
+    let awake_duration = Duration::from_secs(awake_seconds);
 
-    info!("Stay awake for {}s", awake_duration);
+    info!("Stay awake for {}s", awake_seconds);
     Timer::after(awake_duration).await;
     info!("Request to disconnect wifi");
     STOP_WIFI_SIGNAL.signal(());
@@ -165,8 +172,8 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     // set power pin to low to save power
     power_pin.set_low();
 
-    let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION);
-    info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION);
+    let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
+    info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
     enter_deep(peripherals.GPIO14, peripherals.LPWR, deep_sleep_duration);
 }
 

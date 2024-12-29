@@ -31,7 +31,7 @@ use crate::{
     },
     display::{self, Display, DisplayTrait},
     domain::{Sensor, SensorData, WaterLevel},
-    ENABLE_PUMP,
+    DISCOVERY_MESSAGES_SENT, ENABLE_PUMP,
 };
 
 const BUFFER_SIZE: usize = 4096;
@@ -52,7 +52,6 @@ pub async fn update_task(
     mut display: Display<'static>,
     receiver: Receiver<'static, NoopRawMutex, SensorData, 3>,
     clock: Clock,
-    mut first_run: bool,
 ) {
     let resources = MqttResources {
         rx_buffer: [0u8; BUFFER_SIZE],
@@ -84,14 +83,8 @@ pub async fn update_task(
 
         match select(receiver.receive(), client.receive_message()).await {
             Either::First(sensor_data) => {
-                if let Err(e) = handle_sensor_data(
-                    &mut client,
-                    &mut display,
-                    sensor_data,
-                    clock.clone(),
-                    &mut first_run,
-                )
-                .await
+                if let Err(e) =
+                    handle_sensor_data(&mut client, &mut display, sensor_data, clock.clone()).await
                 {
                     error!("Error handling sensor data: {:?}", e);
                     continue;
@@ -158,9 +151,9 @@ async fn handle_sensor_data<'a>(
     display: &mut Display<'static>,
     sensor_data: SensorData,
     clock: Clock,
-    first_run: &mut bool,
 ) -> Result<(), Error> {
-    if *first_run {
+    let discovery_messages_sent = unsafe { DISCOVERY_MESSAGES_SENT };
+    if !discovery_messages_sent {
         info!("First run, sending discovery messages");
         for s in &sensor_data.data {
             let (discovery_topic, message) = get_sensor_discovery(s);
@@ -184,7 +177,9 @@ async fn handle_sensor_data<'a>(
             )
             .await?;
 
-        *first_run = false;
+        unsafe {
+            DISCOVERY_MESSAGES_SENT = true;
+        }
     }
 
     // act on sensor data
@@ -225,7 +220,6 @@ async fn handle_sensor_data<'a>(
     }
 
     if let Some(now) = clock.now() {
-        display.set_backlight(true);
         display.write_multiline(&format!("Time: {}\n{}", now, sensor_data))?;
     }
 
@@ -248,7 +242,7 @@ async fn handle_sensor_data<'a>(
 
     Timer::after(Duration::from_millis(DISPLAY_ON_DURATION_SECONDS * 1000)).await;
 
-    display.set_backlight(false);
+    display.enable_powersave()?;
 
     Ok(())
 }
