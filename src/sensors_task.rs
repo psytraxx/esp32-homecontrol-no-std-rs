@@ -166,9 +166,10 @@ fn read_battery(
 /// From our measurements, the sensor was in water at 3000 and in air at 4095.
 /// We normalize the values to be between 0 and 1, with 1 representing water and 0 representing air.
 fn normalise_humidity_data(readout: u16) -> f32 {
-    let normalized =
+    let normalized_value =
         (readout.saturating_sub(MOISTURE_MIN)) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32;
-    normalized.clamp(0.0, 1.0)
+    // Invert the value
+    1.0 - normalized_value
 }
 
 impl From<u16> for WaterLevel {
