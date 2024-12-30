@@ -174,7 +174,7 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
 
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
     info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
-    enter_deep(peripherals.GPIO14, peripherals.LPWR, deep_sleep_duration);
+    enter_deep(peripherals.LPWR, deep_sleep_duration);
 }
 
 #[derive(Debug, defmt::Format)]
