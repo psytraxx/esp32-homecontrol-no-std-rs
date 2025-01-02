@@ -43,7 +43,8 @@ pub async fn sensor_task(
     let mut dht11_sensor = Dht11::new(dht11_pin);
 
     let mut adc2_config = AdcConfig::new();
-    let mut moisture_pin = adc2_config.enable_pin(p.moisture_pin, Attenuation::Attenuation11dB);
+    let mut moisture_pin = adc2_config
+        .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.moisture_pin, Attenuation::Attenuation11dB);
     let mut waterlevel_pin =
         adc2_config.enable_pin(p.water_level_pin, Attenuation::Attenuation11dB);
     let mut adc2 = Adc::new(p.adc2, adc2_config);
@@ -112,12 +113,13 @@ async fn read_dht11<'a>(
 
 fn read_moisture(
     adc: &mut Adc<ADC2>,
-    pin: &mut AdcPin<GpioPin<11>, ADC2>,
+    pin: &mut AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
     sensor_data: &mut SensorData,
 ) {
     match nb::block!(adc.read_oneshot(pin)) {
         Ok(value) => {
             info!("Analog Moisture reading: {}", value);
+            sensor_data.data.push(Sensor::SoilMoistureRaw(value));
             let value = normalise_humidity_data(value);
             let value = (value * 100.0) as u16;
             info!("Normalized Moisture reading: {}%", value);

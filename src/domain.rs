@@ -44,6 +44,7 @@ pub enum Sensor {
     AirHumidity(u16),
     SoilMoisture(u16),
     BatteryVoltage(u32),
+    SoilMoistureRaw(u16),
 }
 
 impl Sensor {
@@ -66,6 +67,7 @@ impl Sensor {
             Sensor::AirHumidity(_) => Some("humidity"),
             Sensor::SoilMoisture(_) => Some("moisture"),
             Sensor::BatteryVoltage(_) => Some("voltage"),
+            Sensor::SoilMoistureRaw(_) => Some("voltage"),
             _ => None,
         }
     }
@@ -78,6 +80,7 @@ impl Sensor {
             Sensor::SoilMoisture(_) => "moisture",
             Sensor::WaterLevel(_) => "waterlevel",
             Sensor::BatteryVoltage(_) => "batteryvoltage",
+            Sensor::SoilMoistureRaw(_) => "moistureraw",
         }
     }
 
@@ -89,6 +92,7 @@ impl Sensor {
             Sensor::SoilMoisture(_) => "Soil moisture",
             Sensor::WaterLevel(_) => "Water level",
             Sensor::BatteryVoltage(_) => "Battery voltage",
+            Sensor::SoilMoistureRaw(_) => "Soil moisture (raw) mv",
         }
     }
 
@@ -100,6 +104,7 @@ impl Sensor {
             Sensor::SoilMoisture(v) => v.to_string(),
             Sensor::WaterLevel(v) => format!("{}", v),
             Sensor::BatteryVoltage(v) => v.to_string(),
+            Sensor::SoilMoistureRaw(v) => v.to_string(),
         }
     }
 }
