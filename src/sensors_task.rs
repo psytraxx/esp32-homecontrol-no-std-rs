@@ -18,7 +18,7 @@ use crate::{
 const BATTERY_VOLTAGE: u32 = 3700;
 const DHT11_MAX_RETRIES: u8 = 3;
 const DHT11_RETRY_DELAY_MS: u64 = 2000;
-const MOISTURE_MIN: u16 = 2010;
+const MOISTURE_MIN: u16 = 1400;
 const MOISTURE_MAX: u16 = 3895;
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
 const SENSOR_COOLDOWN_MILLISECONDS: u64 = 10;
@@ -168,10 +168,9 @@ fn read_battery(
 /// From our measurements, the sensor was in water at 3000 and in air at 4095.
 /// We normalize the values to be between 0 and 1, with 1 representing water and 0 representing air.
 fn normalise_humidity_data(readout: u16) -> f32 {
-    let normalized_value =
-        (readout.saturating_sub(MOISTURE_MIN)) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32;
-    // Invert the value
-    1.0 - normalized_value
+    let clamped = readout.clamp(MOISTURE_MIN, MOISTURE_MAX);
+
+    (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32
 }
 
 impl From<u16> for WaterLevel {
