@@ -10,8 +10,7 @@ use esp_hal::{
 };
 
 use crate::{
-    clock::Clock,
-    config::MEASUREMENT_INTERVAL_SECONDS,
+    config::AWAKE_DURATION_SECONDS,
     domain::{Sensor, SensorData, WaterLevel},
 };
 
@@ -35,7 +34,6 @@ pub struct SensorPeripherals {
 #[embassy_executor::task]
 pub async fn sensor_task(
     sender: Sender<'static, NoopRawMutex, SensorData, 3>,
-    clock: Clock,
     p: SensorPeripherals,
 ) {
     info!("Create");
@@ -57,13 +55,6 @@ pub async fn sensor_task(
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
     loop {
-        let sampling_period = Duration::from_secs(MEASUREMENT_INTERVAL_SECONDS);
-        let wait_interval = clock.duration_to_next_rounded_wakeup(sampling_period);
-        info!(
-            "Waiting {:?} seconds before reading sensors",
-            wait_interval.as_secs()
-        );
-        Timer::after(wait_interval).await;
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
@@ -76,6 +67,9 @@ pub async fn sensor_task(
         read_battery(&mut adc1, &mut battery_pin, &mut sensor_data);
 
         sender.send(sensor_data).await;
+        // next reading will be the device came back from deep sleep
+        let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS * 2);
+        Timer::after(sampling_period).await;
     }
 }
 

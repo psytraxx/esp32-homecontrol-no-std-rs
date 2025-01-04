@@ -24,7 +24,6 @@ use serde_json::{json, Value};
 use static_cell::StaticCell;
 
 use crate::{
-    clock::Clock,
     config::{
         DEVICE_ID, DISPLAY_ON_DURATION_SECONDS, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
         HOMEASSISTANT_SENSOR_SWITCH, HOMEASSISTANT_SENSOR_TOPIC,
@@ -51,7 +50,6 @@ pub async fn update_task(
     stack: Stack<'static>,
     mut display: Display<'static>,
     receiver: Receiver<'static, NoopRawMutex, SensorData, 3>,
-    clock: Clock,
 ) {
     let resources = MqttResources {
         rx_buffer: [0u8; BUFFER_SIZE],
@@ -83,9 +81,7 @@ pub async fn update_task(
 
         match select(receiver.receive(), client.receive_message()).await {
             Either::First(sensor_data) => {
-                if let Err(e) =
-                    handle_sensor_data(&mut client, &mut display, sensor_data, clock.clone()).await
-                {
+                if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await {
                     error!("Error handling sensor data: {:?}", e);
                     continue;
                 }
@@ -150,7 +146,6 @@ async fn handle_sensor_data<'a>(
     client: &mut MqttClientImpl<'a>,
     display: &mut Display<'static>,
     sensor_data: SensorData,
-    clock: Clock,
 ) -> Result<(), Error> {
     let discovery_messages_sent = unsafe { DISCOVERY_MESSAGES_SENT };
     if !discovery_messages_sent {
@@ -219,9 +214,7 @@ async fn handle_sensor_data<'a>(
             .await?;
     }
 
-    if let Some(now) = clock.now() {
-        display.write_multiline(&format!("Time: {}\n{}", now, sensor_data))?;
-    }
+    display.write_multiline(&format!("{}", sensor_data))?;
 
     let pump_topic = format!("{}/pump/state", DEVICE_ID);
     let message = "OFF";
