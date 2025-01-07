@@ -1,10 +1,12 @@
 use alloc::vec::Vec;
-use defmt::{error, info};
+use defmt::{error, info, warn};
 use dht11::Dht11;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Delay, Duration, Timer};
 use esp_hal::{
-    analog::adc::{Adc, AdcCalCurve, AdcConfig, AdcPin, Attenuation},
+    analog::adc::{
+        Adc, AdcCalCurve, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation, RegisterAccess,
+    },
     gpio::{GpioPin, Level, OutputOpenDrain, Pull},
     peripherals::{ADC1, ADC2},
     prelude::nb,
@@ -20,7 +22,7 @@ const DHT11_MAX_RETRIES: u8 = 3;
 const DHT11_RETRY_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 1400;
 const MOISTURE_MAX: u16 = 3895;
-const WATER_LEVEL_THRESHOLD: u16 = 3000;
+const WATER_LEVEL_THRESHOLD: u32 = 3000;
 const SENSOR_READING_DELAY_MILLISECONDS: u64 = 10;
 const MAX_SENSOR_SAMPLE_COUNT: usize = 32;
 
@@ -64,7 +66,7 @@ pub async fn sensor_task(
         Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
         read_moisture(&mut adc2, &mut moisture_pin, &mut sensor_data).await;
         Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
-        read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data);
+        read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data).await;
         Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
         read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
 
@@ -112,30 +114,13 @@ async fn read_moisture<'a>(
     pin: &mut AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
     sensor_data: &mut SensorData,
 ) {
-    let mut samples = Vec::new();
-
-    while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
-        match nb::block!(adc.read_oneshot(pin)) {
-            Ok(value) => {
-                // double range - sum of all samples will not overflow
-                samples.push(value as u32);
-            }
-            Err(_) => error!("Error reading moisture sensor"),
-        }
-        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
-    }
-
-    if let Some(average) = samples
-        .iter()
-        .sum::<u32>()
-        .checked_div(samples.len() as u32)
-    {
-        info!("Analog Moisture reading: {}", average);
+    if let Some(sample) = sample_adc(adc, pin).await {
+        info!("Analog Moisture reading: {}", sample);
         sensor_data
             .data
-            .push(Sensor::SoilMoistureRaw(average as u16));
+            .push(Sensor::SoilMoistureRaw(sample as u16));
 
-        let moisture = (normalise_humidity_data(average as u16) * 100.0) as u8;
+        let moisture = (normalise_humidity_data(sample as u16) * 100.0) as u8;
         info!("Normalized Moisture reading: {}%", moisture);
         sensor_data.data.push(Sensor::SoilMoisture(moisture));
     } else {
@@ -143,17 +128,16 @@ async fn read_moisture<'a>(
     }
 }
 
-fn read_water_level(
-    adc: &mut Adc<ADC2>,
+async fn read_water_level<'a>(
+    adc: &mut Adc<'a, ADC2>,
     pin: &mut AdcPin<GpioPin<12>, ADC2>,
     sensor_data: &mut SensorData,
 ) {
-    match nb::block!(adc.read_oneshot(pin)) {
-        Ok(value) => {
-            info!("Water level reading: {}", value);
-            sensor_data.data.push(Sensor::WaterLevel(value.into()));
-        }
-        Err(_) => error!("Error reading water level sensor"),
+    if let Some(sample) = sample_adc(adc, pin).await {
+        info!("Water level reading: {}", sample);
+        sensor_data.data.push(Sensor::WaterLevel(sample.into()));
+    } else {
+        error!("Error calculating water level sensor average");
     }
 }
 
@@ -162,37 +146,18 @@ async fn read_battery<'a>(
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
-    let mut samples = Vec::new();
-    while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
-        match nb::block!(adc.read_oneshot(pin)) {
-            Ok(raw) => {
-                let sample: u32 = raw as u32 * 2;
-                samples.push(sample);
-            }
-            Err(_) => {
-                error!("Error reading battery voltage");
-            }
-        }
-        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
-    }
-    if let Some(avg_sample) = samples
-        .iter()
-        .sum::<u32>()
-        .checked_div(samples.len() as u32)
-    {
-        let is_usb = avg_sample > BATTERY_VOLTAGE;
+    if let Some(sample) = sample_adc(adc, pin).await {
+        let is_usb = sample > BATTERY_VOLTAGE;
 
         info!(
             "Battery: {}mV{}",
-            avg_sample,
+            sample,
             if is_usb { " [USB]" } else { "" }
         );
         if !is_usb {
-            let avg_sample = avg_sample.min(BATTERY_VOLTAGE);
+            let sample = sample.min(BATTERY_VOLTAGE);
 
-            sensor_data
-                .data
-                .push(Sensor::BatteryVoltage(avg_sample as u16));
+            sensor_data.data.push(Sensor::BatteryVoltage(sample as u16));
         } else {
             info!("USB connected, skipping battery voltage reading");
         }
@@ -210,12 +175,47 @@ fn normalise_humidity_data(readout: u16) -> f32 {
     (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32
 }
 
-impl From<u16> for WaterLevel {
-    fn from(value: u16) -> Self {
+impl From<u32> for WaterLevel {
+    fn from(value: u32) -> Self {
         if value < WATER_LEVEL_THRESHOLD {
             WaterLevel::Empty
         } else {
             WaterLevel::Full
         }
+    }
+}
+
+async fn sample_adc<'a, PIN: AdcChannel, ADCI: RegisterAccess, ADCC: AdcCalScheme<ADCI>>(
+    adc: &mut Adc<'a, ADCI>,
+    pin: &mut AdcPin<PIN, ADCI, ADCC>,
+) -> Option<u32> {
+    let mut samples = Vec::with_capacity(MAX_SENSOR_SAMPLE_COUNT);
+    while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
+        match nb::block!(adc.read_oneshot(pin)) {
+            Ok(value) => samples.push(value as u32),
+            Err(_) => error!("Error reading moisture sensor"),
+        }
+        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
+    }
+
+    if samples.len() <= 2 {
+        warn!("Not enough samples to calculate average");
+        return None;
+    }
+
+    // Sort the samples and remove the lowest and highest values
+    samples.sort_unstable();
+    samples.pop(); // Remove the highest value
+    samples.remove(0); // Remove the lowest value
+
+    if let Some(average) = samples
+        .iter()
+        .sum::<u32>()
+        .checked_div(samples.len() as u32)
+    {
+        Some(average)
+    } else {
+        warn!("Error calculating moisture sensor average");
+        None
     }
 }
