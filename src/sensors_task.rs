@@ -181,16 +181,21 @@ async fn read_battery<'a>(
         .checked_div(samples.len() as u32)
     {
         let is_usb = avg_sample > BATTERY_VOLTAGE;
-        let avg_sample = avg_sample.min(BATTERY_VOLTAGE);
 
         info!(
             "Battery: {}mV{}",
             avg_sample,
             if is_usb { " [USB]" } else { "" }
         );
-        sensor_data
-            .data
-            .push(Sensor::BatteryVoltage(avg_sample as u16));
+        if !is_usb {
+            let avg_sample = avg_sample.min(BATTERY_VOLTAGE);
+
+            sensor_data
+                .data
+                .push(Sensor::BatteryVoltage(avg_sample as u16));
+        } else {
+            info!("USB connected, skipping battery voltage reading");
+        }
     } else {
         error!("Error calculating battery voltage");
     }
