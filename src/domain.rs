@@ -6,6 +6,8 @@ use alloc::{
 use core::fmt::{Display, Formatter, Result};
 use serde::{Deserialize, Serialize};
 
+const WATER_LEVEL_THRESHOLD: u32 = 3000;
+
 /// Struct to hold sensor data
 #[derive(Default, Debug)]
 pub struct SensorData {
@@ -45,6 +47,16 @@ pub enum Sensor {
     SoilMoisture(u8),
     BatteryVoltage(u16),
     SoilMoistureRaw(u16),
+}
+
+impl From<u32> for WaterLevel {
+    fn from(value: u32) -> Self {
+        if value < WATER_LEVEL_THRESHOLD {
+            WaterLevel::Empty
+        } else {
+            WaterLevel::Full
+        }
+    }
 }
 
 impl Sensor {
