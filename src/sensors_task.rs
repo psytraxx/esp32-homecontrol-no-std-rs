@@ -23,7 +23,7 @@ const DHT11_RETRY_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 1400;
 const MOISTURE_MAX: u16 = 3895;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 10;
-const MAX_SENSOR_SAMPLE_COUNT: usize = 32;
+const MAX_SENSOR_SAMPLE_COUNT: usize = 8;
 
 pub struct SensorPeripherals {
     pub dht11_pin: GpioPin<1>,
@@ -109,7 +109,7 @@ async fn read_moisture<'a>(
     pin: &mut AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
     sensor_data: &mut SensorData,
 ) {
-    if let Some(sample) = sample_adc(adc, pin).await {
+    if let Some(sample) = sample_adc(adc, pin, "moisture").await {
         info!("Analog Moisture reading: {}", sample);
         sensor_data
             .data
@@ -128,7 +128,7 @@ async fn read_water_level<'a>(
     pin: &mut AdcPin<GpioPin<12>, ADC2>,
     sensor_data: &mut SensorData,
 ) {
-    if let Some(sample) = sample_adc(adc, pin).await {
+    if let Some(sample) = sample_adc(adc, pin, "water_level").await {
         info!("Water level reading: {}", sample);
         sensor_data.data.push(Sensor::WaterLevel(sample.into()));
     } else {
@@ -141,7 +141,8 @@ async fn read_battery<'a>(
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
-    if let Some(sample) = sample_adc(adc, pin).await {
+    if let Some(sample) = sample_adc(adc, pin, "battery").await {
+        let sample = sample * 2; // The battery voltage divider is 2:1
         let is_usb = sample > BATTERY_VOLTAGE;
 
         info!(
@@ -173,6 +174,7 @@ fn normalise_humidity_data(readout: u16) -> f32 {
 async fn sample_adc<'a, PIN, ADCI, ADCC>(
     adc: &mut Adc<'a, ADCI>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
+    name: &str,
 ) -> Option<u32>
 where
     PIN: AdcChannel,
@@ -184,12 +186,14 @@ where
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         match nb::block!(adc.read_oneshot(pin)) {
             Ok(value) => samples.push(value as u32),
-            Err(_) => error!("Error reading sensor"),
+            Err(_) => error!("Error reading sensor {}", name),
         }
     }
 
+    //info!("Samples: {} {}", defmt::Debug2Format(&samples), name);
+
     if samples.len() <= 2 {
-        warn!("Not enough samples to calculate average");
+        warn!("Not enough samples to calculate average for {}", name);
         return None;
     }
 
@@ -206,11 +210,11 @@ where
         {
             Some(average)
         } else {
-            warn!("Error calculating moisture sensor average");
+            warn!("Error calculating moisture sensor average for {}", name);
             None
         }
     } else {
-        warn!("No samples to calculate average");
+        warn!("No samples to calculate average for {}", name);
         None
     }
 }
