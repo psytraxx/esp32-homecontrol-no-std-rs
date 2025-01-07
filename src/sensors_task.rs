@@ -17,7 +17,6 @@ use crate::{
     domain::{Sensor, SensorData},
 };
 
-const BATTERY_VOLTAGE: u32 = 3700;
 const DHT11_MAX_RETRIES: u8 = 3;
 const DHT11_RETRY_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 1400;
@@ -143,20 +142,9 @@ async fn read_battery<'a>(
 ) {
     if let Some(sample) = sample_adc(adc, pin, "battery").await {
         let sample = sample * 2; // The battery voltage divider is 2:1
-        let is_usb = sample > BATTERY_VOLTAGE;
 
-        info!(
-            "Battery: {}mV{}",
-            sample,
-            if is_usb { " [USB]" } else { "" }
-        );
-        if !is_usb {
-            let sample = sample.min(BATTERY_VOLTAGE);
-
-            sensor_data.data.push(Sensor::BatteryVoltage(sample as u16));
-        } else {
-            info!("USB connected, skipping battery voltage reading");
-        }
+        info!("Battery: {}mV", sample);
+        sensor_data.data.push(Sensor::BatteryVoltage(sample as u16));
     } else {
         error!("Error calculating battery voltage");
     }
