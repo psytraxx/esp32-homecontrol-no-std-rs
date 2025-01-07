@@ -14,7 +14,7 @@ use esp_hal::{
 
 use crate::{
     config::AWAKE_DURATION_SECONDS,
-    domain::{Sensor, SensorData, WaterLevel},
+    domain::{Sensor, SensorData},
 };
 
 const BATTERY_VOLTAGE: u32 = 3700;
@@ -22,8 +22,7 @@ const DHT11_MAX_RETRIES: u8 = 3;
 const DHT11_RETRY_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 1400;
 const MOISTURE_MAX: u16 = 3895;
-const WATER_LEVEL_THRESHOLD: u32 = 3000;
-const SENSOR_READING_DELAY_MILLISECONDS: u64 = 10;
+const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 10;
 const MAX_SENSOR_SAMPLE_COUNT: usize = 32;
 
 pub struct SensorPeripherals {
@@ -63,11 +62,8 @@ pub async fn sensor_task(
         let mut sensor_data = SensorData::default();
 
         read_dht11(&mut dht11_sensor, &mut sensor_data).await;
-        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
         read_moisture(&mut adc2, &mut moisture_pin, &mut sensor_data).await;
-        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
         read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data).await;
-        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
         read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
 
         sender.send(sensor_data).await;
@@ -82,6 +78,7 @@ async fn read_dht11<'a>(
     sensor_data: &mut SensorData,
 ) {
     let mut attempts = 0;
+    Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
     while attempts < DHT11_MAX_RETRIES {
         match dht11_sensor.perform_measurement(&mut Delay) {
             Ok(measurement) => {
@@ -175,27 +172,22 @@ fn normalise_humidity_data(readout: u16) -> f32 {
     (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32
 }
 
-impl From<u32> for WaterLevel {
-    fn from(value: u32) -> Self {
-        if value < WATER_LEVEL_THRESHOLD {
-            WaterLevel::Empty
-        } else {
-            WaterLevel::Full
-        }
-    }
-}
-
-async fn sample_adc<'a, PIN: AdcChannel, ADCI: RegisterAccess, ADCC: AdcCalScheme<ADCI>>(
+async fn sample_adc<'a, PIN, ADCI, ADCC>(
     adc: &mut Adc<'a, ADCI>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
-) -> Option<u32> {
+) -> Option<u32>
+where
+    PIN: AdcChannel,
+    ADCI: RegisterAccess,
+    ADCC: AdcCalScheme<ADCI>,
+{
     let mut samples = Vec::with_capacity(MAX_SENSOR_SAMPLE_COUNT);
     while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
+        Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         match nb::block!(adc.read_oneshot(pin)) {
             Ok(value) => samples.push(value as u32),
             Err(_) => error!("Error reading moisture sensor"),
         }
-        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
     }
 
     if samples.len() <= 2 {
