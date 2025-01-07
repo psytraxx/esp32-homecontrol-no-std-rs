@@ -42,8 +42,8 @@ pub enum Sensor {
     WaterLevel(WaterLevel),
     AirTemperature(i16),
     AirHumidity(u16),
-    SoilMoisture(u16),
-    BatteryVoltage(u32),
+    SoilMoisture(u8),
+    BatteryVoltage(u16),
     SoilMoistureRaw(u16),
 }
 

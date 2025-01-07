@@ -59,7 +59,6 @@ embassy-futures = { version = "0.1.1", features = ["defmt"] }
 embassy-sync = { version = "0.6.0", features = ["defmt"] }
 static_cell = "2.1.0"
 display-interface = { version = "0.5.0", features = ["defmt-03"] }
-sntpc = { version = "0.4.0", default-features = false, features = ["async"] }
 smoltcp = { version = "0.12.0", default-features = false, features = [
     "defmt",
     "proto-ipv4",

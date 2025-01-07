@@ -1,3 +1,4 @@
+use alloc::vec::Vec;
 use defmt::{error, info};
 use dht11::Dht11;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
@@ -10,8 +11,7 @@ use esp_hal::{
 };
 
 use crate::{
-    clock::Clock,
-    config::MEASUREMENT_INTERVAL_SECONDS,
+    config::AWAKE_DURATION_SECONDS,
     domain::{Sensor, SensorData, WaterLevel},
 };
 
@@ -21,7 +21,8 @@ const DHT11_RETRY_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 1400;
 const MOISTURE_MAX: u16 = 3895;
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
-const SENSOR_COOLDOWN_MILLISECONDS: u64 = 10;
+const SENSOR_READING_DELAY_MILLISECONDS: u64 = 10;
+const MAX_SENSOR_SAMPLE_COUNT: usize = 32;
 
 pub struct SensorPeripherals {
     pub dht11_pin: GpioPin<1>,
@@ -35,7 +36,6 @@ pub struct SensorPeripherals {
 #[embassy_executor::task]
 pub async fn sensor_task(
     sender: Sender<'static, NoopRawMutex, SensorData, 3>,
-    clock: Clock,
     p: SensorPeripherals,
 ) {
     info!("Create");
@@ -57,25 +57,21 @@ pub async fn sensor_task(
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
     loop {
-        let sampling_period = Duration::from_secs(MEASUREMENT_INTERVAL_SECONDS);
-        let wait_interval = clock.duration_to_next_rounded_wakeup(sampling_period);
-        info!(
-            "Waiting {:?} seconds before reading sensors",
-            wait_interval.as_secs()
-        );
-        Timer::after(wait_interval).await;
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
         read_dht11(&mut dht11_sensor, &mut sensor_data).await;
-        Timer::after(Duration::from_millis(SENSOR_COOLDOWN_MILLISECONDS)).await;
-        read_moisture(&mut adc2, &mut moisture_pin, &mut sensor_data);
-        Timer::after(Duration::from_millis(SENSOR_COOLDOWN_MILLISECONDS)).await;
+        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
+        read_moisture(&mut adc2, &mut moisture_pin, &mut sensor_data).await;
+        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
         read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data);
-        Timer::after(Duration::from_millis(SENSOR_COOLDOWN_MILLISECONDS)).await;
-        read_battery(&mut adc1, &mut battery_pin, &mut sensor_data);
+        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
+        read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
 
         sender.send(sensor_data).await;
+        // next reading will be the device came back from deep sleep
+        let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS * 2);
+        Timer::after(sampling_period).await;
     }
 }
 
@@ -111,21 +107,39 @@ async fn read_dht11<'a>(
     }
 }
 
-fn read_moisture(
-    adc: &mut Adc<ADC2>,
+async fn read_moisture<'a>(
+    adc: &mut Adc<'a, ADC2>,
     pin: &mut AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
     sensor_data: &mut SensorData,
 ) {
-    match nb::block!(adc.read_oneshot(pin)) {
-        Ok(value) => {
-            info!("Analog Moisture reading: {}", value);
-            sensor_data.data.push(Sensor::SoilMoistureRaw(value));
-            let value = normalise_humidity_data(value);
-            let value = (value * 100.0) as u16;
-            info!("Normalized Moisture reading: {}%", value);
-            sensor_data.data.push(Sensor::SoilMoisture(value));
+    let mut samples = Vec::new();
+
+    while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
+        match nb::block!(adc.read_oneshot(pin)) {
+            Ok(value) => {
+                // double range - sum of all samples will not overflow
+                samples.push(value as u32);
+            }
+            Err(_) => error!("Error reading moisture sensor"),
         }
-        Err(_) => error!("Error reading moisture sensor"),
+        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
+    }
+
+    if let Some(average) = samples
+        .iter()
+        .sum::<u32>()
+        .checked_div(samples.len() as u32)
+    {
+        info!("Analog Moisture reading: {}", average);
+        sensor_data
+            .data
+            .push(Sensor::SoilMoistureRaw(average as u16));
+
+        let moisture = (normalise_humidity_data(average as u16) * 100.0) as u8;
+        info!("Normalized Moisture reading: {}%", moisture);
+        sensor_data.data.push(Sensor::SoilMoisture(moisture));
+    } else {
+        error!("Error calculating moisture sensor average");
     }
 }
 
@@ -143,24 +157,47 @@ fn read_water_level(
     }
 }
 
-fn read_battery(
-    adc: &mut Adc<ADC1>,
+async fn read_battery<'a>(
+    adc: &mut Adc<'a, ADC1>,
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
-    if let Ok(raw) = nb::block!(adc.read_oneshot(pin)) {
-        let raw_mv = (raw as u32) * 2;
-        let is_usb = raw_mv > BATTERY_VOLTAGE;
-        let voltage = raw_mv.min(BATTERY_VOLTAGE);
+    let mut samples = Vec::new();
+    while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
+        match nb::block!(adc.read_oneshot(pin)) {
+            Ok(raw) => {
+                let sample: u32 = raw as u32 * 2;
+                samples.push(sample);
+            }
+            Err(_) => {
+                error!("Error reading battery voltage");
+            }
+        }
+        Timer::after(Duration::from_millis(SENSOR_READING_DELAY_MILLISECONDS)).await;
+    }
+    if let Some(avg_sample) = samples
+        .iter()
+        .sum::<u32>()
+        .checked_div(samples.len() as u32)
+    {
+        let is_usb = avg_sample > BATTERY_VOLTAGE;
 
         info!(
             "Battery: {}mV{}",
-            voltage,
+            avg_sample,
             if is_usb { " [USB]" } else { "" }
         );
-        sensor_data.data.push(Sensor::BatteryVoltage(voltage));
+        if !is_usb {
+            let avg_sample = avg_sample.min(BATTERY_VOLTAGE);
+
+            sensor_data
+                .data
+                .push(Sensor::BatteryVoltage(avg_sample as u16));
+        } else {
+            info!("USB connected, skipping battery voltage reading");
+        }
     } else {
-        error!("Error reading battery voltage");
+        error!("Error calculating battery voltage");
     }
 }
 

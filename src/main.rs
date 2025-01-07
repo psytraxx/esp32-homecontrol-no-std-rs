@@ -3,11 +3,8 @@
 #![feature(async_closure)]
 
 use alloc::format;
-use clock::Clock;
-use config::{
-    DEEP_SLEEP_DURATION_SECONDS, MEASUREMENT_INTERVAL_SECONDS, MIN_SENSOR_READINGS_BEFORE_SLEEP,
-};
-use defmt::{error, info, Debug2Format};
+use config::{AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS};
+use defmt::{error, info};
 use display::{Display, DisplayPeripherals, DisplayTrait};
 use domain::SensorData;
 use embassy_executor::Spawner;
@@ -35,11 +32,9 @@ use {defmt_rtt as _, esp_backtrace as _};
 
 extern crate alloc;
 
-mod clock;
 mod config;
 mod display;
 mod domain;
-mod ntp;
 mod relay_task;
 mod sensors_task;
 mod sleep;
@@ -102,15 +97,6 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     )
     .await?;
 
-    info!("Synchronize clock from server");
-    let unix_time = ntp::get_unix_time(stack).await?;
-
-    let clock = Clock::new(unix_time as u64);
-
-    if let Some(time) = clock.now() {
-        info!("Now is {:?}", Debug2Format(&time));
-    }
-
     let display_peripherals = DisplayPeripherals {
         backlight: peripherals.GPIO38,
         cs: peripherals.GPIO6,
@@ -141,9 +127,7 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     let receiver = channel.receiver();
     let sender = channel.sender();
 
-    spawner
-        .spawn(update_task(stack, display, receiver, clock.clone()))
-        .ok();
+    spawner.spawn(update_task(stack, display, receiver)).ok();
 
     // see https://github.com/Xinyuan-LilyGO/T-Display-S3/blob/main/image/T-DISPLAY-S3.jpg
     let sensor_peripherals = SensorPeripherals {
@@ -155,16 +139,13 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
         adc2: peripherals.ADC2,
     };
 
-    spawner
-        .spawn(sensor_task(sender, clock.clone(), sensor_peripherals))
-        .ok();
+    spawner.spawn(sensor_task(sender, sensor_peripherals)).ok();
 
     spawner.spawn(relay_task(peripherals.GPIO2)).ok();
 
-    let awake_seconds = MEASUREMENT_INTERVAL_SECONDS * MIN_SENSOR_READINGS_BEFORE_SLEEP;
-    let awake_duration = Duration::from_secs(awake_seconds);
+    let awake_duration = Duration::from_secs(AWAKE_DURATION_SECONDS);
 
-    info!("Stay awake for {}s", awake_seconds);
+    info!("Stay awake for {}s", awake_duration.as_secs());
     Timer::after(awake_duration).await;
     info!("Request to disconnect wifi");
     STOP_WIFI_SIGNAL.signal(());
@@ -180,19 +161,12 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
 #[derive(Debug, defmt::Format)]
 enum Error {
     Wifi(WifiError),
-    Clock(ntp::Error),
     Display(display::Error),
 }
 
 impl From<WifiError> for Error {
     fn from(error: WifiError) -> Self {
         Self::Wifi(error)
-    }
-}
-
-impl From<ntp::Error> for Error {
-    fn from(error: ntp::Error) -> Self {
-        Self::Clock(error)
     }
 }
 

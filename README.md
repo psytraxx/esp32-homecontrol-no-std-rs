@@ -76,7 +76,6 @@ These crates are used to interact with embedded hardware and interfaces.
 ## Networking
 Crates for network communication and protocols.
 
-- [`sntpc`](https://crates.io/crates/sntpc)  
 - [`smoltcp`](https://crates.io/crates/smoltcp)  
 - [`rust-mqtt`](https://crates.io/crates/rust-mqtt)  
 - [`esp-wifi`](https://crates.io/crates/esp-wifi)  
