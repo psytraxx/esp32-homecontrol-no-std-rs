@@ -77,9 +77,8 @@ async fn read_dht11<'a>(
     dht11_sensor: &mut Dht11<OutputOpenDrain<'a>>,
     sensor_data: &mut SensorData,
 ) {
-    let mut attempts = 0;
     Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-    while attempts < DHT11_MAX_RETRIES {
+    for attempt in 1..=DHT11_MAX_RETRIES {
         match dht11_sensor.perform_measurement(&mut Delay) {
             Ok(measurement) => {
                 let temperature = measurement.temperature / 10;
@@ -95,10 +94,9 @@ async fn read_dht11<'a>(
                 return;
             }
             Err(_) => {
-                attempts += 1;
                 error!(
                     "Error reading DHT11 sensor (attempt {}/{})",
-                    attempts, DHT11_MAX_RETRIES
+                    attempt, DHT11_MAX_RETRIES
                 );
                 Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
             }
@@ -186,7 +184,7 @@ where
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         match nb::block!(adc.read_oneshot(pin)) {
             Ok(value) => samples.push(value as u32),
-            Err(_) => error!("Error reading moisture sensor"),
+            Err(_) => error!("Error reading sensor"),
         }
     }
 
@@ -196,18 +194,23 @@ where
     }
 
     // Sort the samples and remove the lowest and highest values
-    samples.sort_unstable();
-    samples.pop(); // Remove the highest value
+    samples.drain(samples.len() - 1..); // Remove the highest value
+    samples.drain(..1); // Remove the lowest value
     samples.remove(0); // Remove the lowest value
 
-    if let Some(average) = samples
-        .iter()
-        .sum::<u32>()
-        .checked_div(samples.len() as u32)
-    {
-        Some(average)
+    if !samples.is_empty() {
+        if let Some(average) = samples
+            .iter()
+            .sum::<u32>()
+            .checked_div(samples.len() as u32)
+        {
+            Some(average)
+        } else {
+            warn!("Error calculating moisture sensor average");
+            None
+        }
     } else {
-        warn!("Error calculating moisture sensor average");
+        warn!("No samples to calculate average");
         None
     }
 }
