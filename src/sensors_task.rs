@@ -7,7 +7,7 @@ use esp_hal::{
     analog::adc::{
         Adc, AdcCalCurve, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation, RegisterAccess,
     },
-    gpio::{GpioPin, Level, OutputOpenDrain, Pull},
+    gpio::{GpioPin, Input, Level, OutputOpenDrain, Pull},
     peripherals::{ADC1, ADC2},
     prelude::nb,
 };
@@ -27,7 +27,8 @@ const MAX_SENSOR_SAMPLE_COUNT: usize = 8;
 pub struct SensorPeripherals {
     pub dht11_pin: GpioPin<1>,
     pub battery_pin: GpioPin<4>,
-    pub moisture_pin: GpioPin<11>,
+    pub moisture_digital_pin: GpioPin<10>,
+    pub moisture_analog_pin: GpioPin<11>,
     pub water_level_pin: GpioPin<12>,
     pub adc1: ADC1,
     pub adc2: ADC2,
@@ -43,8 +44,10 @@ pub async fn sensor_task(
     let mut dht11_sensor = Dht11::new(dht11_pin);
 
     let mut adc2_config = AdcConfig::new();
-    let mut moisture_pin = adc2_config
-        .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.moisture_pin, Attenuation::Attenuation11dB);
+    let mut moisture_pin = adc2_config.enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(
+        p.moisture_analog_pin,
+        Attenuation::Attenuation11dB,
+    );
     let mut waterlevel_pin =
         adc2_config.enable_pin(p.water_level_pin, Attenuation::Attenuation11dB);
     let mut adc2 = Adc::new(p.adc2, adc2_config);
@@ -56,12 +59,20 @@ pub async fn sensor_task(
     );
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
+    let digital_input = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
+
     loop {
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
         read_dht11(&mut dht11_sensor, &mut sensor_data).await;
-        read_moisture(&mut adc2, &mut moisture_pin, &mut sensor_data).await;
+        read_moisture(
+            &mut adc2,
+            &mut moisture_pin,
+            &digital_input,
+            &mut sensor_data,
+        )
+        .await;
         read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data).await;
         read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
 
@@ -105,10 +116,11 @@ async fn read_dht11<'a>(
 
 async fn read_moisture<'a>(
     adc: &mut Adc<'a, ADC2>,
-    pin: &mut AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
+    pin_analog: &mut AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
+    pin_digial: &Input<'a>,
     sensor_data: &mut SensorData,
 ) {
-    if let Some(sample) = sample_adc(adc, pin, "moisture").await {
+    if let Some(sample) = sample_adc(adc, pin_analog, "moisture").await {
         info!("Analog Moisture reading: {}", sample);
         sensor_data
             .data
@@ -117,6 +129,12 @@ async fn read_moisture<'a>(
         let moisture = (normalise_humidity_data(sample as u16) * 100.0) as u8;
         info!("Normalized Moisture reading: {}%", moisture);
         sensor_data.data.push(Sensor::SoilMoisture(moisture));
+
+        let moisture_trigger = pin_digial.is_high();
+
+        sensor_data.data.push(Sensor::PumpTrigger(moisture_trigger));
+
+        info!("Moisture trigger: {}", moisture_trigger);
     } else {
         error!("Error calculating moisture sensor average");
     }

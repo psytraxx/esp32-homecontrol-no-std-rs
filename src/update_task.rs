@@ -184,8 +184,8 @@ async fn handle_sensor_data<'a>(
             ENABLE_PUMP.signal(false);
         }
 
-        if let Sensor::SoilMoisture(percent) = entry {
-            if *percent < 10 {
+        if let Sensor::PumpTrigger(enabled) = entry {
+            if *enabled {
                 info!("Soil moisture is low, starting pump");
                 ENABLE_PUMP.signal(true);
             }

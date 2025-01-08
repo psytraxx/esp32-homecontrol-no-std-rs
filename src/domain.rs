@@ -47,6 +47,7 @@ pub enum Sensor {
     SoilMoisture(u8),
     BatteryVoltage(u16),
     SoilMoistureRaw(u16),
+    PumpTrigger(bool),
 }
 
 impl From<u32> for WaterLevel {
@@ -93,6 +94,7 @@ impl Sensor {
             Sensor::WaterLevel(_) => "waterlevel",
             Sensor::BatteryVoltage(_) => "batteryvoltage",
             Sensor::SoilMoistureRaw(_) => "moistureraw",
+            Sensor::PumpTrigger(_) => "pumptrigger",
         }
     }
 
@@ -105,6 +107,7 @@ impl Sensor {
             Sensor::WaterLevel(_) => "Water level",
             Sensor::BatteryVoltage(_) => "Battery voltage",
             Sensor::SoilMoistureRaw(_) => "Soil moisture (raw) mv",
+            Sensor::PumpTrigger(_) => "Pump trigger",
         }
     }
 
@@ -117,6 +120,7 @@ impl Sensor {
             Sensor::WaterLevel(v) => format!("{}", v),
             Sensor::BatteryVoltage(v) => v.to_string(),
             Sensor::SoilMoistureRaw(v) => v.to_string(),
+            Sensor::PumpTrigger(v) => v.to_string(),
         }
     }
 }

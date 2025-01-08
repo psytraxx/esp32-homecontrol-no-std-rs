@@ -133,7 +133,8 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     let sensor_peripherals = SensorPeripherals {
         dht11_pin: peripherals.GPIO1,
         battery_pin: peripherals.GPIO4,
-        moisture_pin: peripherals.GPIO11,
+        moisture_digital_pin: peripherals.GPIO10,
+        moisture_analog_pin: peripherals.GPIO11,
         water_level_pin: peripherals.GPIO12,
         adc1: peripherals.ADC1,
         adc2: peripherals.ADC2,
