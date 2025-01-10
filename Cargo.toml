@@ -21,6 +21,7 @@ embassy-net = { version = "0.5.0", features = [
     "dhcpv4-hostname",
 ] }
 
+mipidsi = { git = "https://github.com/almindor/mipidsi.git", branch = "v0.9.0" }
 esp-wifi = { version = "0.11.0", default-features = false, features = [
     "esp32s3",
     "serde",
@@ -45,8 +46,6 @@ rust-mqtt = { version = "0.3.0", default-features = false, features = [
     "defmt",
 ] }
 rand_core = "0.6.4"
-mipidsi = "0.8.0"
-display-interface-parallel-gpio = "0.7.0"
 embedded-text = "0.7.2"
 embedded-graphics = { version = "0.8.1", features = ["defmt"] }
 embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
@@ -58,7 +57,6 @@ serde_json = { version = "1.0.133", default-features = false, features = [
 embassy-futures = { version = "0.1.1", features = ["defmt"] }
 embassy-sync = { version = "0.6.0", features = ["defmt"] }
 static_cell = "2.1.0"
-display-interface = { version = "0.5.0", features = ["defmt-03"] }
 smoltcp = { version = "0.12.0", default-features = false, features = [
     "defmt",
     "proto-ipv4",

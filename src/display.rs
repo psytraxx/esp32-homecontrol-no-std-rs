@@ -1,6 +1,4 @@
-use core::convert::Infallible;
 use defmt::Format;
-use display_interface_parallel_gpio::{DisplayError, Generic8BitBus, PGPIO8BitInterface};
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::{Dimensions, Point};
 use embedded_graphics::mono_font::iso_8859_1::FONT_10X20 as FONT;
@@ -11,9 +9,9 @@ use embedded_graphics::Drawable;
 use embedded_text::alignment::HorizontalAlignment;
 use embedded_text::style::{HeightMode, TextBoxStyleBuilder};
 use embedded_text::TextBox;
+use esp_hal::delay::Delay;
 use esp_hal::gpio::{GpioPin, Level, Output};
-use mipidsi::dcs::{EnterSleepMode, ExitSleepMode};
-use mipidsi::error::InitError;
+use mipidsi::interface::{Generic8BitBus, ParallelInterface};
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
 use mipidsi::{Builder, Display as MipiDisplay};
@@ -23,7 +21,7 @@ use crate::config::{DISPLAY_HEIGHT, DISPLAY_WIDTH};
 const TEXT_STYLE: MonoTextStyle<Rgb565> = MonoTextStyle::new(&FONT, Rgb565::WHITE);
 
 type MipiDisplayWrapper<'a> = MipiDisplay<
-    PGPIO8BitInterface<
+    ParallelInterface<
         Generic8BitBus<
             Output<'a>,
             Output<'a>,
@@ -44,6 +42,7 @@ type MipiDisplayWrapper<'a> = MipiDisplay<
 pub struct Display<'a> {
     display: MipiDisplayWrapper<'a>,
     backlight: Output<'a>,
+    delay: Delay,
 }
 
 pub trait DisplayTrait {
@@ -93,7 +92,9 @@ impl<'a> Display<'a> {
 
         let bus = Generic8BitBus::new((d0, d1, d2, d3, d4, d5, d6, d7));
 
-        let di = PGPIO8BitInterface::new(bus, dc, wr);
+        let di = ParallelInterface::new(bus, dc, wr);
+
+        let mut delay = Delay::new();
 
         let display = Builder::new(mipidsi::models::ST7789, di)
             .display_size(DISPLAY_HEIGHT, DISPLAY_WIDTH)
@@ -101,15 +102,24 @@ impl<'a> Display<'a> {
             .orientation(Orientation::new().rotate(Rotation::Deg270))
             .invert_colors(ColorInversion::Inverted)
             .reset_pin(rst)
-            .init(&mut embassy_time::Delay)?;
+            .init(&mut delay)
+            .map_err(|_| Error::InitError)?;
 
-        Ok(Self { display, backlight })
+        Ok(Self {
+            display,
+            backlight,
+            delay,
+        })
     }
 
     fn disable_powersave(&mut self) -> Result<(), Error> {
         self.backlight.set_high();
-        unsafe { self.display.dcs().write_command(ExitSleepMode) }?;
-        self.display.clear(RgbColor::BLACK)?;
+        self.display
+            .wake(&mut self.delay)
+            .map_err(|_| Error::DisplayInterface)?;
+        self.display
+            .clear(RgbColor::BLACK)
+            .map_err(|_| Error::DisplayInterface)?;
         Ok(())
     }
 }
@@ -118,7 +128,8 @@ impl<'a> DisplayTrait for Display<'a> {
     fn write(&mut self, text: &str) -> Result<(), Error> {
         self.disable_powersave()?;
         Text::with_baseline(text, Point::new(0, 0), TEXT_STYLE, Baseline::Top)
-            .draw(&mut self.display)?;
+            .draw(&mut self.display)
+            .map_err(|_| Error::DisplayInterface)?;
         Ok(())
     }
 
@@ -137,13 +148,17 @@ impl<'a> DisplayTrait for Display<'a> {
             textbox_style,
         );
         // Draw the text box.
-        text_box.draw(&mut self.display)?;
+        text_box
+            .draw(&mut self.display)
+            .map_err(|_| Error::DisplayInterface)?;
         Ok(())
     }
 
     fn enable_powersave(&mut self) -> Result<(), Error> {
         self.backlight.set_low();
-        unsafe { self.display.dcs().write_command(EnterSleepMode)? };
+        self.display
+            .sleep(&mut self.delay)
+            .map_err(|_| Error::DisplayInterface)?;
         Ok(())
     }
 }
@@ -151,27 +166,15 @@ impl<'a> DisplayTrait for Display<'a> {
 /// A clock error
 #[derive(Debug)]
 pub enum Error {
-    DisplayInterface(DisplayError),
+    DisplayInterface,
     InitError,
 }
 
 impl Format for Error {
     fn format(&self, f: defmt::Formatter) {
         match self {
-            Error::DisplayInterface(e) => defmt::write!(f, "Display error {}", e),
+            Error::DisplayInterface => defmt::write!(f, "Display error"),
             Error::InitError => defmt::write!(f, "Init error"),
         }
-    }
-}
-
-impl From<DisplayError> for Error {
-    fn from(error: DisplayError) -> Self {
-        Self::DisplayInterface(error)
-    }
-}
-
-impl From<InitError<Infallible>> for Error {
-    fn from(_: InitError<Infallible>) -> Self {
-        Self::InitError
     }
 }
