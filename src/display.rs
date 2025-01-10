@@ -11,7 +11,7 @@ use embedded_text::style::{HeightMode, TextBoxStyleBuilder};
 use embedded_text::TextBox;
 use esp_hal::delay::Delay;
 use esp_hal::gpio::{GpioPin, Level, Output};
-use mipidsi::interface::{Generic8BitBus, ParallelInterface};
+use mipidsi::interface::{Generic8BitBus, ParallelError, ParallelInterface};
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
 use mipidsi::{Builder, Display as MipiDisplay};
@@ -114,12 +114,8 @@ impl<'a> Display<'a> {
 
     fn disable_powersave(&mut self) -> Result<(), Error> {
         self.backlight.set_high();
-        self.display
-            .wake(&mut self.delay)
-            .map_err(|_| Error::DisplayInterface)?;
-        self.display
-            .clear(RgbColor::BLACK)
-            .map_err(|_| Error::DisplayInterface)?;
+        self.display.wake(&mut self.delay)?;
+        self.display.clear(RgbColor::BLACK)?;
         Ok(())
     }
 }
@@ -128,8 +124,7 @@ impl<'a> DisplayTrait for Display<'a> {
     fn write(&mut self, text: &str) -> Result<(), Error> {
         self.disable_powersave()?;
         Text::with_baseline(text, Point::new(0, 0), TEXT_STYLE, Baseline::Top)
-            .draw(&mut self.display)
-            .map_err(|_| Error::DisplayInterface)?;
+            .draw(&mut self.display)?;
         Ok(())
     }
 
@@ -148,17 +143,13 @@ impl<'a> DisplayTrait for Display<'a> {
             textbox_style,
         );
         // Draw the text box.
-        text_box
-            .draw(&mut self.display)
-            .map_err(|_| Error::DisplayInterface)?;
+        text_box.draw(&mut self.display)?;
         Ok(())
     }
 
     fn enable_powersave(&mut self) -> Result<(), Error> {
         self.backlight.set_low();
-        self.display
-            .sleep(&mut self.delay)
-            .map_err(|_| Error::DisplayInterface)?;
+        self.display.sleep(&mut self.delay)?;
         Ok(())
     }
 }
@@ -166,15 +157,25 @@ impl<'a> DisplayTrait for Display<'a> {
 /// A clock error
 #[derive(Debug)]
 pub enum Error {
-    DisplayInterface,
+    DisplayInterface(&'static str),
     InitError,
 }
 
 impl Format for Error {
     fn format(&self, f: defmt::Formatter) {
         match self {
-            Error::DisplayInterface => defmt::write!(f, "Display error"),
+            Error::DisplayInterface(e) => defmt::write!(f, "Display error {}", e),
             Error::InitError => defmt::write!(f, "Init error"),
+        }
+    }
+}
+
+impl<BUS, DC, WR> From<ParallelError<BUS, DC, WR>> for Error {
+    fn from(e: ParallelError<BUS, DC, WR>) -> Self {
+        match e {
+            ParallelError::Bus(_) => Self::DisplayInterface("Bus error"),
+            ParallelError::Dc(_) => Self::DisplayInterface("Data/command pin error"),
+            ParallelError::Wr(_) => Self::DisplayInterface("Write pin error"),
         }
     }
 }
