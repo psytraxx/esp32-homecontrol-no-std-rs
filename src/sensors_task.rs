@@ -19,8 +19,9 @@ use crate::{
 
 const DHT11_MAX_RETRIES: u8 = 3;
 const DHT11_RETRY_DELAY_MS: u64 = 2000;
-const MOISTURE_MIN: u16 = 1400;
-const MOISTURE_MAX: u16 = 2500;
+const MOISTURE_MIN: u16 = 1600;
+const MOISTURE_MAX: u16 = 2100;
+const USB_CHARGING_VOLTAGE: u16 = 4200;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 10;
 const MAX_SENSOR_SAMPLE_COUNT: usize = 8;
 
@@ -122,11 +123,9 @@ async fn read_moisture<'a>(
 ) {
     if let Some(sample) = sample_adc(adc, pin_analog, "moisture").await {
         info!("Analog Moisture reading: {}", sample);
-        sensor_data
-            .data
-            .push(Sensor::SoilMoistureRaw(sample as u16));
+        sensor_data.data.push(Sensor::SoilMoistureRaw(sample));
 
-        let moisture = (normalise_humidity_data(sample as u16) * 100.0) as u8;
+        let moisture = (normalise_humidity_data(sample) * 100.0) as u8;
         info!("Normalized Moisture reading: {}%", moisture);
         sensor_data.data.push(Sensor::SoilMoisture(moisture));
 
@@ -160,9 +159,15 @@ async fn read_battery<'a>(
 ) {
     if let Some(sample) = sample_adc(adc, pin, "battery").await {
         let sample = sample * 2; // The battery voltage divider is 2:1
-
-        info!("Battery: {}mV", sample);
-        sensor_data.data.push(Sensor::BatteryVoltage(sample as u16));
+        if sample < USB_CHARGING_VOLTAGE {
+            info!("Battery: {}mV", sample);
+            sensor_data.data.push(Sensor::BatteryVoltage(sample));
+        } else {
+            warn!(
+                "Battery voltage too high - looks we are charging on USB: {}mV",
+                sample
+            );
+        }
     } else {
         error!("Error calculating battery voltage");
     }
@@ -181,7 +186,7 @@ async fn sample_adc<'a, PIN, ADCI, ADCC>(
     adc: &mut Adc<'a, ADCI>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
     name: &str,
-) -> Option<u32>
+) -> Option<u16>
 where
     PIN: AdcChannel,
     ADCI: RegisterAccess,
@@ -214,7 +219,7 @@ where
             .sum::<u32>()
             .checked_div(samples.len() as u32)
         {
-            Some(average)
+            Some(average as u16)
         } else {
             warn!("Error calculating moisture sensor average for {}", name);
             None
