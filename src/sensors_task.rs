@@ -157,24 +157,25 @@ async fn read_battery<'a>(
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
-    if let Some(sample) = sample_adc(adc, pin, "battery").await {
-        let sample = sample * 2; // The battery voltage divider is 2:1
-        if sample < USB_CHARGING_VOLTAGE {
-            info!("Battery: {}mV", sample);
-            sensor_data.data.push(Sensor::BatteryVoltage(sample));
-        } else {
-            warn!(
-                "Battery voltage too high - looks we are charging on USB: {}mV",
-                sample
-            );
+    match sample_adc(adc, pin, "battery").await {
+        Some(sample) => {
+            let sample = sample * 2; // The battery voltage divider is 2:1
+            if sample < USB_CHARGING_VOLTAGE {
+                info!("Battery: {}mV", sample);
+                sensor_data.data.push(Sensor::BatteryVoltage(sample));
+            } else {
+                warn!(
+                    "Battery voltage too high - looks we are charging on USB: {}mV",
+                    sample
+                );
+            }
         }
-    } else {
-        error!("Error calculating battery voltage");
+        None => {
+            error!("Error calculating battery voltage");
+        }
     }
 }
 
-/// The hw390 moisture sensor returns a value between 3000 and 4095.
-/// From our measurements, the sensor was in water at 3000 and in air at 4095.
 /// We normalize the values to be between 0 and 1, with 1 representing water and 0 representing air.
 fn normalise_humidity_data(readout: u16) -> f32 {
     let clamped = readout.clamp(MOISTURE_MIN, MOISTURE_MAX);
@@ -193,10 +194,12 @@ where
     ADCC: AdcCalScheme<ADCI>,
 {
     let mut samples = Vec::with_capacity(MAX_SENSOR_SAMPLE_COUNT);
+
+    // Collect samples with a warm-up delay
     while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         match nb::block!(adc.read_oneshot(pin)) {
-            Ok(value) => samples.push(value as u32),
+            Ok(value) => samples.push(value),
             Err(_) => error!("Error reading sensor {}", name),
         }
     }
@@ -208,24 +211,18 @@ where
         return None;
     }
 
-    // Sort the samples and remove the lowest and highest values
-    samples.drain(samples.len() - 1..); // Remove the highest value
-    samples.drain(..1); // Remove the lowest value
-    samples.remove(0); // Remove the lowest value
+    // Sort and remove outliers
+    samples.sort_unstable();
+    let samples = &samples[1..samples.len() - 1]; // Remove lowest and highest values
 
-    if !samples.is_empty() {
-        if let Some(average) = samples
-            .iter()
-            .sum::<u32>()
-            .checked_div(samples.len() as u32)
-        {
-            Some(average as u16)
-        } else {
+    samples
+        .iter()
+        .map(|&x| x as u32)
+        .sum::<u32>()
+        .checked_div(samples.len() as u32)
+        .map(|avg| avg as u16)
+        .or_else(|| {
             warn!("Error calculating moisture sensor average for {}", name);
             None
-        }
-    } else {
-        warn!("No samples to calculate average for {}", name);
-        None
-    }
+        })
 }
