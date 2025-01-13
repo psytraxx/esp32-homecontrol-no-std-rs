@@ -65,9 +65,6 @@ These crates provide support for asynchronous programming models and embedded fu
 These crates are used to interact with embedded hardware and interfaces.
 
 - [`embedded-hal`](https://crates.io/crates/embedded-hal)  
-- [`embedded-hal-async`](https://crates.io/crates/embedded-hal-async)  
-- [`embedded-io`](https://crates.io/crates/embedded-io)  
-- [`embedded-io-async`](https://crates.io/crates/embedded-io-async)  
 - [`embedded-text`](https://crates.io/crates/embedded-text)  
 - [`embedded-graphics`](https://crates.io/crates/embedded-graphics)  
 
@@ -76,7 +73,6 @@ These crates are used to interact with embedded hardware and interfaces.
 ## Networking
 Crates for network communication and protocols.
 
-- [`smoltcp`](https://crates.io/crates/smoltcp)  
 - [`rust-mqtt`](https://crates.io/crates/rust-mqtt)  
 - [`esp-wifi`](https://crates.io/crates/esp-wifi)  
 
@@ -89,14 +85,12 @@ Crates related to ESP32 platforms, Wi-Fi support, and memory management.
 - [`esp-backtrace`](https://crates.io/crates/esp-backtrace)  
 - [`esp-hal`](https://crates.io/crates/esp-hal)  
 - [`esp-hal-embassy`](https://crates.io/crates/esp-hal-embassy)  
-- [`esp-metadata`](https://crates.io/crates/esp-metadata)  
 
 ---
 
 ## Display
 Crates used for display interfaces.
 
-- [`display-interface`](https://crates.io/crates/display-interface)  
 - [`mipidsi`](https://crates.io/crates/mipidsi)  
 
 ---
@@ -114,12 +108,7 @@ Crates for data serialization and deserialization.
 - [`serde`](https://crates.io/crates/serde)  
 - [`serde_json`](https://crates.io/crates/serde_json)  
 
----
 
-## MQTT
-Crates for MQTT communication (messaging protocol).
-
-- [`rust-mqtt`](https://crates.io/crates/rust-mqtt)  
 
 ---
 
@@ -128,6 +117,9 @@ Other supporting crates for various use cases.
 
 - [`heapless`](https://crates.io/crates/heapless)  
 - [`static_cell`](https://crates.io/crates/static_cell)  
+- [`rand_core`](https://crates.io/crates/rand_core)  
+- [`defmt`](https://crates.io/crates/defmt)  
+- [`defmt-rtt`](https://crates.io/crates/defmt-rtt)  
 - and more...
 
 ---

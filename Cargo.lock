@@ -782,7 +782,6 @@ dependencies = [
 name = "esp32-homecontrol"
 version = "0.1.0"
 dependencies = [
- "chrono",
  "defmt",
  "defmt-rtt",
  "dht11",
@@ -805,7 +804,6 @@ dependencies = [
  "rust-mqtt",
  "serde",
  "serde_json",
- "smoltcp 0.12.0",
  "static_cell",
 ]
 
