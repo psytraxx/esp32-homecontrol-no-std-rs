@@ -1,4 +1,5 @@
 use alloc::vec::Vec;
+use defmt::{error, info, warn};
 use dht11::Dht11;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Delay, Duration, Timer};
@@ -10,7 +11,6 @@ use esp_hal::{
     peripherals::{ADC1, ADC2},
     prelude::nb,
 };
-use log::{error, info, warn};
 
 use crate::{
     config::AWAKE_DURATION_SECONDS,
@@ -203,6 +203,8 @@ where
             Err(_) => error!("Error reading sensor {}", name),
         }
     }
+
+    //info!("Samples: {} {}", defmt::Debug2Format(&samples), name);
 
     if samples.len() <= 2 {
         warn!("Not enough samples to calculate average for {}", name);

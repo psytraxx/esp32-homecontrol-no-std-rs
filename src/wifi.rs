@@ -1,4 +1,5 @@
 use core::str::FromStr;
+use defmt::{error, info};
 use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
@@ -9,7 +10,6 @@ use esp_wifi::wifi::{
     WifiStaDevice, WifiState,
 };
 use heapless::String;
-use log::{error, info};
 use rand_core::RngCore;
 use static_cell::StaticCell;
 
@@ -82,7 +82,7 @@ async fn net_task(mut runner: embassy_net::Runner<'static, WifiDevice<'static, W
 #[embassy_executor::task]
 async fn connection(controller: WifiController<'static>) {
     if let Err(error) = connection_fallible(controller).await {
-        error!("Cannot connect to WiFi: {:?}", error);
+        error!("Cannot connect to WiFi: {}", error);
     }
 }
 
@@ -126,7 +126,7 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
                 break;
             }
             Err(error) => {
-                error!("Failed to connect to WiFi network: {:?}", error);
+                error!("Failed to connect to WiFi network: {}", error);
                 Timer::after(Duration::from_millis(5000)).await;
             }
         }
