@@ -4,7 +4,6 @@
 
 use alloc::format;
 use config::{AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS};
-use defmt::{error, info};
 use display::{Display, DisplayPeripherals, DisplayTrait};
 use domain::SensorData;
 use embassy_executor::Spawner;
@@ -15,6 +14,7 @@ use embassy_sync::{
 };
 use embassy_time::{Duration, Timer};
 use esp_alloc::heap_allocator;
+use esp_backtrace as _;
 use esp_hal::{
     gpio::{Level, Output},
     prelude::*,
@@ -22,13 +22,13 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_wifi::wifi::WifiError;
+use log::{error, info};
 use relay_task::relay_task;
 use sensors_task::{sensor_task, SensorPeripherals};
 use sleep::enter_deep;
 use static_cell::StaticCell;
 use update_task::update_task;
 use wifi::{connect_to_wifi, STOP_WIFI_SIGNAL};
-use {defmt_rtt as _, esp_backtrace as _};
 
 extern crate alloc;
 
@@ -57,6 +57,7 @@ static mut DISCOVERY_MESSAGES_SENT: bool = false;
 
 #[main]
 async fn main(spawner: Spawner) {
+    esp_println::logger::init_logger_from_env();
     let boot_count = unsafe { BOOT_COUNT };
     info!("Current boot count = {}", boot_count);
     unsafe {
@@ -159,10 +160,10 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     enter_deep(peripherals.LPWR, deep_sleep_duration);
 }
 
-#[derive(Debug, defmt::Format)]
+#[derive(Debug)]
 enum Error {
-    Wifi(WifiError),
-    Display(display::Error),
+    Wifi(#[expect(unused, reason = "Never read directly")] WifiError),
+    Display(#[expect(unused, reason = "Never read directly")] display::Error),
 }
 
 impl From<WifiError> for Error {

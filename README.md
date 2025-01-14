@@ -118,8 +118,6 @@ Other supporting crates for various use cases.
 - [`heapless`](https://crates.io/crates/heapless)  
 - [`static_cell`](https://crates.io/crates/static_cell)  
 - [`rand_core`](https://crates.io/crates/rand_core)  
-- [`defmt`](https://crates.io/crates/defmt)  
-- [`defmt-rtt`](https://crates.io/crates/defmt-rtt)  
 - and more...
 
 ---
