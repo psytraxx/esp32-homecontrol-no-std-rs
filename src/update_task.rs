@@ -25,8 +25,8 @@ use static_cell::StaticCell;
 
 use crate::{
     config::{
-        DEVICE_ID, DISPLAY_ON_DURATION_SECONDS, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
-        HOMEASSISTANT_SENSOR_SWITCH, HOMEASSISTANT_SENSOR_TOPIC,
+        DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_SWITCH,
+        HOMEASSISTANT_SENSOR_TOPIC, SAMPLING_INTERVAL_SECONDS,
     },
     display::{self, Display, DisplayTrait},
     domain::{Sensor, SensorData, WaterLevel},
@@ -233,7 +233,7 @@ async fn handle_sensor_data<'a>(
         )
         .await?;
 
-    Timer::after(Duration::from_millis(DISPLAY_ON_DURATION_SECONDS * 1000)).await;
+    Timer::after(Duration::from_secs(SAMPLING_INTERVAL_SECONDS / 2)).await;
 
     display.enable_powersave()?;
 

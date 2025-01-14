@@ -13,7 +13,7 @@ use esp_hal::{
 };
 
 use crate::{
-    config::AWAKE_DURATION_SECONDS,
+    config::SAMPLING_INTERVAL_SECONDS,
     domain::{Sensor, SensorData},
 };
 
@@ -79,7 +79,7 @@ pub async fn sensor_task(
 
         sender.send(sensor_data).await;
         // next reading will be the device came back from deep sleep
-        let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS * 2);
+        let sampling_period = Duration::from_secs(SAMPLING_INTERVAL_SECONDS);
         Timer::after(sampling_period).await;
     }
 }
