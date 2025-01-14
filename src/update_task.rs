@@ -3,7 +3,6 @@ use alloc::{
     string::{String, ToString},
 };
 use core::{num::ParseIntError, str};
-use defmt::{error, info};
 use embassy_futures::select::{select, Either};
 use embassy_net::{
     dns::{DnsQueryType, Error as DnsError},
@@ -12,6 +11,7 @@ use embassy_net::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
 use embassy_time::{Duration, Timer};
+use log::{error, info};
 use rust_mqtt::{
     client::{
         client::MqttClient,
@@ -317,13 +317,13 @@ fn get_common_device_info(topic: &str, name: &str) -> Value {
     })
 }
 
-#[derive(Debug, defmt::Format)]
+#[derive(Debug)]
 enum Error {
     Port,
-    Dns(DnsError),
-    Connection(ConnectError),
-    Broker(ReasonCode),
-    Display(display::Error),
+    Dns(#[expect(unused, reason = "Never read directly")] DnsError),
+    Connection(#[expect(unused, reason = "Never read directly")] ConnectError),
+    Broker(#[expect(unused, reason = "Never read directly")] ReasonCode),
+    Display(#[expect(unused, reason = "Never read directly")] display::Error),
 }
 
 impl From<embassy_net::dns::Error> for Error {

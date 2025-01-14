@@ -1,8 +1,8 @@
-use defmt::info;
 use embassy_time::Duration;
 use esp_hal::peripherals::LPWR;
 use esp_hal::rtc_cntl::sleep::{RtcSleepConfig, TimerWakeupSource};
 use esp_hal::rtc_cntl::Rtc;
+use log::info;
 
 /// Enter deep sleep mode for the specified duration.
 pub fn enter_deep(rtc_cntl: LPWR, interval: Duration) -> ! {

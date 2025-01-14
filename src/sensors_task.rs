@@ -1,5 +1,4 @@
 use alloc::vec::Vec;
-use defmt::{error, info, warn};
 use dht11::Dht11;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Delay, Duration, Timer};
@@ -11,6 +10,7 @@ use esp_hal::{
     peripherals::{ADC1, ADC2},
     prelude::nb,
 };
+use log::{error, info, warn};
 
 use crate::{
     config::AWAKE_DURATION_SECONDS,
@@ -19,8 +19,9 @@ use crate::{
 
 const DHT11_MAX_RETRIES: u8 = 3;
 const DHT11_RETRY_DELAY_MS: u64 = 2000;
-const MOISTURE_MIN: u16 = 1400;
-const MOISTURE_MAX: u16 = 2500;
+const MOISTURE_MIN: u16 = 1600;
+const MOISTURE_MAX: u16 = 2100;
+const USB_CHARGING_VOLTAGE: u16 = 4200;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 10;
 const MAX_SENSOR_SAMPLE_COUNT: usize = 8;
 
@@ -122,11 +123,9 @@ async fn read_moisture<'a>(
 ) {
     if let Some(sample) = sample_adc(adc, pin_analog, "moisture").await {
         info!("Analog Moisture reading: {}", sample);
-        sensor_data
-            .data
-            .push(Sensor::SoilMoistureRaw(sample as u16));
+        sensor_data.data.push(Sensor::SoilMoistureRaw(sample));
 
-        let moisture = (normalise_humidity_data(sample as u16) * 100.0) as u8;
+        let moisture = (normalise_humidity_data(sample) * 100.0) as u8;
         info!("Normalized Moisture reading: {}%", moisture);
         sensor_data.data.push(Sensor::SoilMoisture(moisture));
 
@@ -158,18 +157,25 @@ async fn read_battery<'a>(
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
-    if let Some(sample) = sample_adc(adc, pin, "battery").await {
-        let sample = sample * 2; // The battery voltage divider is 2:1
-
-        info!("Battery: {}mV", sample);
-        sensor_data.data.push(Sensor::BatteryVoltage(sample as u16));
-    } else {
-        error!("Error calculating battery voltage");
+    match sample_adc(adc, pin, "battery").await {
+        Some(sample) => {
+            let sample = sample * 2; // The battery voltage divider is 2:1
+            if sample < USB_CHARGING_VOLTAGE {
+                info!("Battery: {}mV", sample);
+                sensor_data.data.push(Sensor::BatteryVoltage(sample));
+            } else {
+                warn!(
+                    "Battery voltage too high - looks we are charging on USB: {}mV",
+                    sample
+                );
+            }
+        }
+        None => {
+            error!("Error calculating battery voltage");
+        }
     }
 }
 
-/// The hw390 moisture sensor returns a value between 3000 and 4095.
-/// From our measurements, the sensor was in water at 3000 and in air at 4095.
 /// We normalize the values to be between 0 and 1, with 1 representing water and 0 representing air.
 fn normalise_humidity_data(readout: u16) -> f32 {
     let clamped = readout.clamp(MOISTURE_MIN, MOISTURE_MAX);
@@ -181,46 +187,40 @@ async fn sample_adc<'a, PIN, ADCI, ADCC>(
     adc: &mut Adc<'a, ADCI>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
     name: &str,
-) -> Option<u32>
+) -> Option<u16>
 where
     PIN: AdcChannel,
     ADCI: RegisterAccess,
     ADCC: AdcCalScheme<ADCI>,
 {
     let mut samples = Vec::with_capacity(MAX_SENSOR_SAMPLE_COUNT);
+
+    // Collect samples with a warm-up delay
     while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         match nb::block!(adc.read_oneshot(pin)) {
-            Ok(value) => samples.push(value as u32),
+            Ok(value) => samples.push(value),
             Err(_) => error!("Error reading sensor {}", name),
         }
     }
-
-    //info!("Samples: {} {}", defmt::Debug2Format(&samples), name);
 
     if samples.len() <= 2 {
         warn!("Not enough samples to calculate average for {}", name);
         return None;
     }
 
-    // Sort the samples and remove the lowest and highest values
-    samples.drain(samples.len() - 1..); // Remove the highest value
-    samples.drain(..1); // Remove the lowest value
-    samples.remove(0); // Remove the lowest value
+    // Sort and remove outliers
+    samples.sort_unstable();
+    let samples = &samples[1..samples.len() - 1]; // Remove lowest and highest values
 
-    if !samples.is_empty() {
-        if let Some(average) = samples
-            .iter()
-            .sum::<u32>()
-            .checked_div(samples.len() as u32)
-        {
-            Some(average)
-        } else {
+    samples
+        .iter()
+        .map(|&x| x as u32)
+        .sum::<u32>()
+        .checked_div(samples.len() as u32)
+        .map(|avg| avg as u16)
+        .or_else(|| {
             warn!("Error calculating moisture sensor average for {}", name);
             None
-        }
-    } else {
-        warn!("No samples to calculate average for {}", name);
-        None
-    }
+        })
 }

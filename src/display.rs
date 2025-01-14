@@ -1,4 +1,3 @@
-use defmt::Format;
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::{Dimensions, Point};
 use embedded_graphics::mono_font::iso_8859_1::FONT_10X20 as FONT;
@@ -157,17 +156,8 @@ impl<'a> DisplayTrait for Display<'a> {
 /// A clock error
 #[derive(Debug)]
 pub enum Error {
-    DisplayInterface(&'static str),
+    DisplayInterface(#[expect(unused, reason = "Never read directly")] &'static str),
     InitError,
-}
-
-impl Format for Error {
-    fn format(&self, f: defmt::Formatter) {
-        match self {
-            Error::DisplayInterface(e) => defmt::write!(f, "Display error {}", e),
-            Error::InitError => defmt::write!(f, "Init error"),
-        }
-    }
 }
 
 impl<BUS, DC, WR> From<ParallelError<BUS, DC, WR>> for Error {

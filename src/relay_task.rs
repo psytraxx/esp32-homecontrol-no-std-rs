@@ -1,6 +1,6 @@
-use defmt::info;
 use embassy_time::{Duration, Timer};
 use esp_hal::gpio::{GpioPin, Level, Output};
+use log::info;
 
 use crate::ENABLE_PUMP;
 
