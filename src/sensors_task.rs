@@ -197,9 +197,13 @@ where
     // Collect samples with a warm-up delay
     while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-        match adc.read_oneshot(pin) {
+        match nb::block!(adc.read_oneshot(pin)) {
             Ok(value) => samples.push(value),
-            Err(_) => error!("Error reading sensor {}", name),
+            Err(e) => error!(
+                "Error reading sensor {} {:?}",
+                name,
+                defmt::Debug2Format(&e)
+            ),
         }
     }
 

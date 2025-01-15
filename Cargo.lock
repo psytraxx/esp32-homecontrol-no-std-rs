@@ -797,6 +797,7 @@ dependencies = [
  "esp-wifi",
  "heapless",
  "mipidsi",
+ "nb 1.1.0",
  "rand_core",
  "rust-mqtt",
  "serde",
@@ -1106,6 +1107,9 @@ name = "nb"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
+dependencies = [
+ "defmt",
+]
 
 [[package]]
 name = "num-derive"
