@@ -133,8 +133,8 @@ async fn read_moisture<'a>(
     }
 }
 
-async fn read_water_level<'a>(
-    adc: &mut Adc<'a, ADC2>,
+async fn read_water_level(
+    adc: &mut Adc<'_, ADC2>,
     pin: &mut AdcPin<GpioPin<12>, ADC2>,
     sensor_data: &mut SensorData,
 ) {
@@ -146,8 +146,8 @@ async fn read_water_level<'a>(
     }
 }
 
-async fn read_battery<'a>(
-    adc: &mut Adc<'a, ADC1>,
+async fn read_battery(
+    adc: &mut Adc<'_, ADC1>,
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
@@ -177,8 +177,8 @@ fn normalise_humidity_data(readout: u16) -> f32 {
     (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32
 }
 
-async fn sample_adc<'a, PIN, ADCI, ADCC>(
-    adc: &mut Adc<'a, ADCI>,
+async fn sample_adc<PIN, ADCI, ADCC>(
+    adc: &mut Adc<'_, ADCI>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
     name: &str,
 ) -> Option<u16>
