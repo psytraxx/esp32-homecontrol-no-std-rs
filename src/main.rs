@@ -16,11 +16,13 @@ use embassy_sync::{
 use embassy_time::{Duration, Timer};
 use esp_alloc::heap_allocator;
 use esp_hal::{
+    clock::CpuClock,
     gpio::{Level, Output},
-    prelude::*,
+    ram,
     rng::Rng,
     timer::timg::TimerGroup,
 };
+use esp_hal_embassy::main;
 use esp_wifi::wifi::WifiError;
 use relay_task::relay_task;
 use sensors_task::{sensor_task, SensorPeripherals};

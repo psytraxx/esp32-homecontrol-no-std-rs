@@ -9,7 +9,6 @@ use esp_hal::{
     },
     gpio::{GpioPin, Input, Level, OutputOpenDrain, Pull},
     peripherals::{ADC1, ADC2},
-    prelude::nb,
 };
 
 use crate::{
@@ -41,23 +40,18 @@ pub async fn sensor_task(
     p: SensorPeripherals,
 ) {
     info!("Create");
-    let dht11_pin = OutputOpenDrain::new(p.dht11_pin, Level::High, Pull::None);
-    let mut dht11_sensor = Dht11::new(dht11_pin);
+    let _dht11_pin = OutputOpenDrain::new(p.dht11_pin, Level::High, Pull::None);
+    //let mut dht11_sensor = Dht11::new(dht11_pin);
 
     let mut adc2_config = AdcConfig::new();
-    let mut moisture_pin = adc2_config.enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(
-        p.moisture_analog_pin,
-        Attenuation::Attenuation11dB,
-    );
-    let mut waterlevel_pin =
-        adc2_config.enable_pin(p.water_level_pin, Attenuation::Attenuation11dB);
+    let mut moisture_pin = adc2_config
+        .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.moisture_analog_pin, Attenuation::_11dB);
+    let mut waterlevel_pin = adc2_config.enable_pin(p.water_level_pin, Attenuation::_11dB);
     let mut adc2 = Adc::new(p.adc2, adc2_config);
 
     let mut adc1_config = AdcConfig::new();
-    let mut battery_pin = adc1_config.enable_pin_with_cal::<GpioPin<4>, AdcCalCurve<ADC1>>(
-        p.battery_pin,
-        Attenuation::Attenuation11dB,
-    );
+    let mut battery_pin = adc1_config
+        .enable_pin_with_cal::<GpioPin<4>, AdcCalCurve<ADC1>>(p.battery_pin, Attenuation::_11dB);
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
     let digital_input = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
@@ -66,7 +60,7 @@ pub async fn sensor_task(
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
-        read_dht11(&mut dht11_sensor, &mut sensor_data).await;
+        //read_dht11(&mut dht11_sensor, &mut sensor_data).await;
         read_moisture(
             &mut adc2,
             &mut moisture_pin,
@@ -84,7 +78,7 @@ pub async fn sensor_task(
     }
 }
 
-async fn read_dht11<'a>(
+/* async fn read_dht11<'a>(
     dht11_sensor: &mut Dht11<OutputOpenDrain<'a>>,
     sensor_data: &mut SensorData,
 ) {
@@ -113,7 +107,7 @@ async fn read_dht11<'a>(
             }
         }
     }
-}
+} */
 
 async fn read_moisture<'a>(
     adc: &mut Adc<'a, ADC2>,
@@ -198,7 +192,7 @@ where
     // Collect samples with a warm-up delay
     while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-        match nb::block!(adc.read_oneshot(pin)) {
+        match adc.read_oneshot(pin) {
             Ok(value) => samples.push(value),
             Err(_) => error!("Error reading sensor {}", name),
         }

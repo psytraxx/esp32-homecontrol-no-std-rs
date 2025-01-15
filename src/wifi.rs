@@ -4,7 +4,7 @@ use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
-use esp_hal::{peripheral::Peripheral, peripherals, rng::Rng};
+use esp_hal::{peripherals, rng::Rng};
 use esp_wifi::wifi::{
     ClientConfiguration, Configuration, WifiController, WifiDevice, WifiError, WifiEvent,
     WifiStaDevice, WifiState,
@@ -23,10 +23,7 @@ pub static STOP_WIFI_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new()
 
 pub async fn connect_to_wifi(
     wifi: peripherals::WIFI,
-    timer: esp_hal::timer::timg::Timer<
-        esp_hal::timer::timg::TimerX<<esp_hal::peripherals::TIMG1 as Peripheral>::P>,
-        esp_hal::Blocking,
-    >,
+    timer: esp_hal::timer::timg::Timer,
     radio_clocks: peripherals::RADIO_CLK,
     mut rng: Rng,
     spawner: Spawner,
