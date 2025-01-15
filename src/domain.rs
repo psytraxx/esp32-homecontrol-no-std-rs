@@ -42,8 +42,8 @@ impl Display for WaterLevel {
 #[derive(Debug)]
 pub enum Sensor {
     WaterLevel(WaterLevel),
-    AirTemperature(i16),
-    AirHumidity(u16),
+    AirTemperature(u8),
+    AirHumidity(u8),
     SoilMoisture(u8),
     BatteryVoltage(u16),
     SoilMoistureRaw(u16),

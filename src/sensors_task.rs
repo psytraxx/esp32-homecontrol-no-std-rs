@@ -1,15 +1,15 @@
 use alloc::vec::Vec;
 use defmt::{error, info, warn};
-use dht11::Dht11;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::{Duration, Timer};
+use embedded_dht_rs::dht11::Dht11;
 use esp_hal::{
     analog::adc::{
         Adc, AdcCalCurve, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation, RegisterAccess,
     },
+    delay::Delay,
     gpio::{GpioPin, Input, Level, OutputOpenDrain, Pull},
     peripherals::{ADC1, ADC2},
-    prelude::nb,
 };
 
 use crate::{
@@ -41,23 +41,22 @@ pub async fn sensor_task(
     p: SensorPeripherals,
 ) {
     info!("Create");
+
     let dht11_pin = OutputOpenDrain::new(p.dht11_pin, Level::High, Pull::None);
-    let mut dht11_sensor = Dht11::new(dht11_pin);
+
+    let delay = Delay::new();
+
+    let mut dht11_sensor = Dht11::new(dht11_pin, delay);
 
     let mut adc2_config = AdcConfig::new();
-    let mut moisture_pin = adc2_config.enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(
-        p.moisture_analog_pin,
-        Attenuation::Attenuation11dB,
-    );
-    let mut waterlevel_pin =
-        adc2_config.enable_pin(p.water_level_pin, Attenuation::Attenuation11dB);
+    let mut moisture_pin = adc2_config
+        .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.moisture_analog_pin, Attenuation::_11dB);
+    let mut waterlevel_pin = adc2_config.enable_pin(p.water_level_pin, Attenuation::_11dB);
     let mut adc2 = Adc::new(p.adc2, adc2_config);
 
     let mut adc1_config = AdcConfig::new();
-    let mut battery_pin = adc1_config.enable_pin_with_cal::<GpioPin<4>, AdcCalCurve<ADC1>>(
-        p.battery_pin,
-        Attenuation::Attenuation11dB,
-    );
+    let mut battery_pin = adc1_config
+        .enable_pin_with_cal::<GpioPin<4>, AdcCalCurve<ADC1>>(p.battery_pin, Attenuation::_11dB);
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
     let digital_input = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
@@ -84,16 +83,16 @@ pub async fn sensor_task(
     }
 }
 
-async fn read_dht11<'a>(
-    dht11_sensor: &mut Dht11<OutputOpenDrain<'a>>,
+async fn read_dht11(
+    dht11_sensor: &mut Dht11<OutputOpenDrain<'_>, Delay>,
     sensor_data: &mut SensorData,
 ) {
     Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
     for attempt in 1..=DHT11_MAX_RETRIES {
-        match dht11_sensor.perform_measurement(&mut Delay) {
+        match dht11_sensor.read() {
             Ok(measurement) => {
-                let temperature = measurement.temperature / 10;
-                let humidity = measurement.humidity / 10;
+                let temperature = measurement.temperature;
+                let humidity = measurement.humidity;
 
                 info!(
                     "DHT11 reading... Temperature: {}°C, Humidity: {}%",
@@ -139,8 +138,8 @@ async fn read_moisture<'a>(
     }
 }
 
-async fn read_water_level<'a>(
-    adc: &mut Adc<'a, ADC2>,
+async fn read_water_level(
+    adc: &mut Adc<'_, ADC2>,
     pin: &mut AdcPin<GpioPin<12>, ADC2>,
     sensor_data: &mut SensorData,
 ) {
@@ -152,8 +151,8 @@ async fn read_water_level<'a>(
     }
 }
 
-async fn read_battery<'a>(
-    adc: &mut Adc<'a, ADC1>,
+async fn read_battery(
+    adc: &mut Adc<'_, ADC1>,
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
@@ -183,8 +182,8 @@ fn normalise_humidity_data(readout: u16) -> f32 {
     (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32
 }
 
-async fn sample_adc<'a, PIN, ADCI, ADCC>(
-    adc: &mut Adc<'a, ADCI>,
+async fn sample_adc<PIN, ADCI, ADCC>(
+    adc: &mut Adc<'_, ADCI>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
     name: &str,
 ) -> Option<u16>
@@ -200,7 +199,11 @@ where
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         match nb::block!(adc.read_oneshot(pin)) {
             Ok(value) => samples.push(value),
-            Err(_) => error!("Error reading sensor {}", name),
+            Err(e) => error!(
+                "Error reading sensor {} {:?}",
+                name,
+                defmt::Debug2Format(&e)
+            ),
         }
     }
 

@@ -142,8 +142,8 @@ async fn initialize_mqtt_client<'a>(
     Ok(client)
 }
 
-async fn handle_sensor_data<'a>(
-    client: &mut MqttClientImpl<'a>,
+async fn handle_sensor_data(
+    client: &mut MqttClientImpl<'_>,
     display: &mut Display<'static>,
     sensor_data: SensorData,
 ) -> Result<(), Error> {

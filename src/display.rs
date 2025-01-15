@@ -68,7 +68,7 @@ pub struct DisplayPeripherals {
     pub d7: GpioPin<48>,
 }
 
-impl<'a> Display<'a> {
+impl Display<'_> {
     pub fn new(p: DisplayPeripherals) -> Result<Self, Error> {
         let backlight = Output::new(p.backlight, Level::Low);
 
@@ -120,7 +120,7 @@ impl<'a> Display<'a> {
     }
 }
 
-impl<'a> DisplayTrait for Display<'a> {
+impl DisplayTrait for Display<'_> {
     fn write(&mut self, text: &str) -> Result<(), Error> {
         self.disable_powersave()?;
         Text::with_baseline(text, Point::new(0, 0), TEXT_STYLE, Baseline::Top)
