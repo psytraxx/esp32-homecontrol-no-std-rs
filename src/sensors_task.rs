@@ -1,12 +1,13 @@
 use alloc::vec::Vec;
 use defmt::{error, info, warn};
-use dht11::Dht11;
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::{Duration, Timer};
+use embedded_dht_rs::dht11::Dht11;
 use esp_hal::{
     analog::adc::{
         Adc, AdcCalCurve, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation, RegisterAccess,
     },
+    delay::Delay,
     gpio::{GpioPin, Input, Level, OutputOpenDrain, Pull},
     peripherals::{ADC1, ADC2},
 };
@@ -40,8 +41,12 @@ pub async fn sensor_task(
     p: SensorPeripherals,
 ) {
     info!("Create");
-    let _dht11_pin = OutputOpenDrain::new(p.dht11_pin, Level::High, Pull::None);
-    //let mut dht11_sensor = Dht11::new(dht11_pin);
+
+    let dht11_pin = OutputOpenDrain::new(p.dht11_pin, Level::High, Pull::None);
+
+    let delay = Delay::new();
+
+    let mut dht11_sensor = Dht11::new(dht11_pin, delay);
 
     let mut adc2_config = AdcConfig::new();
     let mut moisture_pin = adc2_config
@@ -60,7 +65,7 @@ pub async fn sensor_task(
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
-        //read_dht11(&mut dht11_sensor, &mut sensor_data).await;
+        read_dht11(&mut dht11_sensor, &mut sensor_data).await;
         read_moisture(
             &mut adc2,
             &mut moisture_pin,
@@ -78,16 +83,16 @@ pub async fn sensor_task(
     }
 }
 
-/* async fn read_dht11<'a>(
-    dht11_sensor: &mut Dht11<OutputOpenDrain<'a>>,
+async fn read_dht11(
+    dht11_sensor: &mut Dht11<OutputOpenDrain<'_>, Delay>,
     sensor_data: &mut SensorData,
 ) {
     Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
     for attempt in 1..=DHT11_MAX_RETRIES {
-        match dht11_sensor.perform_measurement(&mut Delay) {
+        match dht11_sensor.read() {
             Ok(measurement) => {
-                let temperature = measurement.temperature / 10;
-                let humidity = measurement.humidity / 10;
+                let temperature = measurement.temperature;
+                let humidity = measurement.humidity;
 
                 info!(
                     "DHT11 reading... Temperature: {}°C, Humidity: {}%",
@@ -107,7 +112,7 @@ pub async fn sensor_task(
             }
         }
     }
-} */
+}
 
 async fn read_moisture<'a>(
     adc: &mut Adc<'a, ADC2>,

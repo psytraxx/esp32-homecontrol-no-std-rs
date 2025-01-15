@@ -98,7 +98,7 @@ Crates used for display interfaces.
 ## Sensor Support
 Crates for interfacing with sensors like DHT11.
 
-- [`dht11`](https://crates.io/crates/dht11)  
+- [`embedded-dht-rs`](https://github.com/rust-dd/embedded-dht-rs)  
 
 ---
 
