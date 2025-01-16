@@ -1,5 +1,6 @@
 use alloc::vec::Vec;
 use defmt::{error, info, warn};
+use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Duration, Timer};
 use embedded_dht_rs::dht11::Dht11;
@@ -17,7 +18,7 @@ use crate::{
     domain::{Sensor, SensorData},
 };
 
-const DHT11_MAX_RETRIES: u8 = 3;
+const DHT11_MAX_RETRIES: u64 = 3;
 const DHT11_RETRY_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 1600;
 const MOISTURE_MAX: u16 = 2100;
@@ -88,28 +89,43 @@ async fn read_dht11(
     sensor_data: &mut SensorData,
 ) {
     Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-    for attempt in 1..=DHT11_MAX_RETRIES {
-        match dht11_sensor.read() {
-            Ok(measurement) => {
-                let temperature = measurement.temperature;
-                let humidity = measurement.humidity;
+    let timeout_duration = Duration::from_millis(DHT11_RETRY_DELAY_MS * DHT11_MAX_RETRIES);
 
-                info!(
-                    "DHT11 reading... Temperature: {}°C, Humidity: {}%",
-                    temperature, humidity
-                );
+    let read_future = async {
+        for attempt in 1..=DHT11_MAX_RETRIES {
+            match dht11_sensor.read() {
+                Ok(measurement) => {
+                    let temperature = measurement.temperature;
+                    let humidity = measurement.humidity;
 
-                sensor_data.data.push(Sensor::AirTemperature(temperature));
-                sensor_data.data.push(Sensor::AirHumidity(humidity));
-                return;
+                    info!(
+                        "DHT11 reading... Temperature: {}°C, Humidity: {}%",
+                        temperature, humidity
+                    );
+
+                    sensor_data.data.push(Sensor::AirTemperature(temperature));
+                    sensor_data.data.push(Sensor::AirHumidity(humidity));
+                    return;
+                }
+                Err(_) => {
+                    error!(
+                        "Error reading DHT11 sensor (attempt {}/{})",
+                        attempt, DHT11_MAX_RETRIES
+                    );
+                    Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
+                }
             }
-            Err(_) => {
-                error!(
-                    "Error reading DHT11 sensor (attempt {}/{})",
-                    attempt, DHT11_MAX_RETRIES
-                );
-                Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
-            }
+        }
+    };
+
+    let timeout_future = Timer::after(timeout_duration);
+
+    match select(read_future, timeout_future).await {
+        Either::First(_) => {
+            info!("DHT11 reading successful");
+        }
+        Either::Second(_) => {
+            error!("DHT11 reading timed out");
         }
     }
 }
