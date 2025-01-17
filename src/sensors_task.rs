@@ -23,7 +23,7 @@ const DHT11_RETRY_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 1600;
 const MOISTURE_MAX: u16 = 2100;
 const USB_CHARGING_VOLTAGE: u16 = 4200;
-const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 10;
+const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
 const MAX_SENSOR_SAMPLE_COUNT: usize = 8;
 
 pub struct SensorPeripherals {
@@ -63,24 +63,46 @@ pub async fn sensor_task(
     let digital_input = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
 
     loop {
-        info!("Reading sensors");
-        let mut sensor_data = SensorData::default();
+        let read_future = async {
+            info!("Reading sensors");
+            let mut sensor_data = SensorData::default();
 
-        read_dht11(&mut dht11_sensor, &mut sensor_data).await;
-        read_moisture(
-            &mut adc2,
-            &mut moisture_pin,
-            &digital_input,
-            &mut sensor_data,
-        )
-        .await;
-        read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data).await;
-        read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
+            Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+            read_dht11(&mut dht11_sensor, &mut sensor_data).await;
 
-        sender.send(sensor_data).await;
-        // next reading will be the device came back from deep sleep
+            Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+            read_moisture(
+                &mut adc2,
+                &mut moisture_pin,
+                &digital_input,
+                &mut sensor_data,
+            )
+            .await;
+
+            Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+            read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data).await;
+
+            Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+            read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
+
+            sender.send(sensor_data).await;
+        };
+
         let sampling_period = Duration::from_secs(SAMPLING_INTERVAL_SECONDS);
-        Timer::after(sampling_period).await;
+        let timeout_future = Timer::after(sampling_period);
+
+        match select(read_future, timeout_future).await {
+            Either::First(_) => {
+                info!(
+                    "Successfully read sensors - waiting {} second before next reading",
+                    SAMPLING_INTERVAL_SECONDS
+                );
+                Timer::after(sampling_period).await;
+            }
+            Either::Second(_) => {
+                warn!("Sensor reading timeout - retrying immediately");
+            }
+        }
     }
 }
 
@@ -88,44 +110,28 @@ async fn read_dht11(
     dht11_sensor: &mut Dht11<OutputOpenDrain<'_>, Delay>,
     sensor_data: &mut SensorData,
 ) {
-    Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-    let timeout_duration = Duration::from_millis(DHT11_RETRY_DELAY_MS * DHT11_MAX_RETRIES);
+    for attempt in 1..=DHT11_MAX_RETRIES {
+        match dht11_sensor.read() {
+            Ok(measurement) => {
+                let temperature = measurement.temperature;
+                let humidity = measurement.humidity;
 
-    let read_future = async {
-        for attempt in 1..=DHT11_MAX_RETRIES {
-            match dht11_sensor.read() {
-                Ok(measurement) => {
-                    let temperature = measurement.temperature;
-                    let humidity = measurement.humidity;
+                info!(
+                    "DHT11 reading... Temperature: {}°C, Humidity: {}%",
+                    temperature, humidity
+                );
 
-                    info!(
-                        "DHT11 reading... Temperature: {}°C, Humidity: {}%",
-                        temperature, humidity
-                    );
-
-                    sensor_data.data.push(Sensor::AirTemperature(temperature));
-                    sensor_data.data.push(Sensor::AirHumidity(humidity));
-                    return;
-                }
-                Err(_) => {
-                    error!(
-                        "Error reading DHT11 sensor (attempt {}/{})",
-                        attempt, DHT11_MAX_RETRIES
-                    );
-                    Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
-                }
+                sensor_data.data.push(Sensor::AirTemperature(temperature));
+                sensor_data.data.push(Sensor::AirHumidity(humidity));
+                return;
             }
-        }
-    };
-
-    let timeout_future = Timer::after(timeout_duration);
-
-    match select(read_future, timeout_future).await {
-        Either::First(_) => {
-            info!("DHT11 reading successful");
-        }
-        Either::Second(_) => {
-            error!("DHT11 reading timed out");
+            Err(_) => {
+                error!(
+                    "Error reading DHT11 sensor (attempt {}/{})",
+                    attempt, DHT11_MAX_RETRIES
+                );
+                Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
+            }
         }
     }
 }
