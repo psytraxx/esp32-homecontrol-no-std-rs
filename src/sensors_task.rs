@@ -1,6 +1,5 @@
 use alloc::vec::Vec;
 use defmt::{error, info, warn};
-use embassy_futures::select::{select, Either};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Duration, Timer};
 use embedded_dht_rs::dht11::Dht11;
@@ -63,48 +62,33 @@ pub async fn sensor_task(
     let digital_input = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
 
     loop {
-        let read_future = async {
-            info!("Reading sensors");
-            let mut sensor_data = SensorData::default();
+        info!("Reading sensors");
+        let mut sensor_data = SensorData::default();
 
-            Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-            read_dht11(&mut dht11_sensor, &mut sensor_data).await;
+        Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+        read_dht11(&mut dht11_sensor, &mut sensor_data).await;
 
-            Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-            read_moisture(
-                &mut adc2,
-                &mut moisture_pin,
-                &digital_input,
-                &mut sensor_data,
-            )
-            .await;
+        Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+        read_moisture(
+            &mut adc2,
+            &mut moisture_pin,
+            &digital_input,
+            &mut sensor_data,
+        )
+        .await;
 
-            Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-            read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data).await;
+        Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+        read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data).await;
 
-            Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-            read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
+        Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+        read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
 
-            read_heap_stats(&mut sensor_data);
+        read_heap_stats(&mut sensor_data);
 
-            sender.send(sensor_data).await;
-        };
+        sender.send(sensor_data).await;
 
         let sampling_period = Duration::from_secs(SAMPLING_INTERVAL_SECONDS);
-        let timeout_future = Timer::after(sampling_period);
-
-        match select(read_future, timeout_future).await {
-            Either::First(_) => {
-                info!(
-                    "Successfully read sensors - waiting {} second before next reading",
-                    SAMPLING_INTERVAL_SECONDS
-                );
-                Timer::after(sampling_period).await;
-            }
-            Either::Second(_) => {
-                warn!("Sensor reading timeout - retrying immediately");
-            }
-        }
+        Timer::after(sampling_period).await;
     }
 }
 
