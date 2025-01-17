@@ -83,6 +83,8 @@ impl Sensor {
             Sensor::SoilMoisture(_) => Some("moisture"),
             Sensor::BatteryVoltage(_) => Some("voltage"),
             Sensor::SoilMoistureRaw(_) => Some("voltage"),
+            Sensor::HeapFree(_) => Some("data_size"),
+            Sensor::HeapUsed(_) => Some("data_size"),
             _ => None,
         }
     }
