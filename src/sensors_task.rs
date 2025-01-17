@@ -85,6 +85,8 @@ pub async fn sensor_task(
             Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
             read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
 
+            read_heap_stats(&mut sensor_data);
+
             sender.send(sensor_data).await;
         };
 
@@ -104,6 +106,15 @@ pub async fn sensor_task(
             }
         }
     }
+}
+
+fn read_heap_stats(sensor_data: &mut SensorData) {
+    sensor_data
+        .data
+        .push(Sensor::HeapFree(esp_alloc::HEAP.free()));
+    sensor_data
+        .data
+        .push(Sensor::HeapUsed(esp_alloc::HEAP.used()));
 }
 
 async fn read_dht11(
