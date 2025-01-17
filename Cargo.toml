@@ -10,7 +10,7 @@ esp-backtrace = { version = "0.15.0", features = [
     "panic-handler",
     "defmt",
 ] }
-esp-hal = { version = "0.23.0", features = ["esp32s3", "defmt", "octal-psram"] }
+esp-hal = { version = "0.23.1", features = ["esp32s3", "defmt", "octal-psram"] }
 esp-alloc = { version = "0.6.0" }
 embassy-net = { version = "0.6.0", features = [
     "tcp",
@@ -22,11 +22,10 @@ embassy-net = { version = "0.6.0", features = [
 ] }
 
 mipidsi = { version = "0.9.0" }
-esp-wifi = { version = "0.12.0", default-features = false, features = [
+esp-wifi = { version = "0.12.0", features = [
     "esp32s3",
     "serde",
     "wifi",
-    "esp-alloc",
     "defmt",
 ] }
 heapless = { version = "0.8.0", default-features = false }
