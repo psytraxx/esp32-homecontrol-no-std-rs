@@ -14,10 +14,11 @@ use embassy_sync::{
     signal::Signal,
 };
 use embassy_time::{Duration, Timer};
-use esp_alloc::heap_allocator;
+use esp_alloc::{heap_allocator, psram_allocator};
 use esp_hal::{
     clock::CpuClock,
     gpio::{Level, Output},
+    psram::PsramConfig,
     ram,
     rng::Rng,
     timer::timg::TimerGroup,
@@ -72,9 +73,9 @@ async fn main(spawner: Spawner) {
 
 async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     let peripherals = esp_hal::init({
-        let mut config = esp_hal::Config::default();
-        config.cpu_clock = CpuClock::max();
-        config
+        esp_hal::Config::default()
+            .with_cpu_clock(CpuClock::max())
+            .with_psram(PsramConfig::default())
     });
 
     // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
@@ -82,6 +83,8 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     power_pin.set_high();
 
     heap_allocator!(72 * 1024);
+
+    psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
     let rng = Rng::new(peripherals.RNG);
 
