@@ -5,7 +5,8 @@ use embassy_time::{Duration, Timer};
 use embedded_hal::delay::DelayNs;
 use esp_hal::{
     analog::adc::{
-        Adc, AdcCalCurve, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation, RegisterAccess,
+        Adc, AdcCalCurve, AdcCalLine, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation,
+        RegisterAccess,
     },
     delay::Delay,
     gpio::{GpioPin, Input, Level, OutputOpenDrain, Pull},
@@ -57,7 +58,7 @@ pub async fn sensor_task(
 
     let mut adc1_config = AdcConfig::new();
     let mut battery_pin = adc1_config
-        .enable_pin_with_cal::<GpioPin<4>, AdcCalCurve<ADC1>>(p.battery_pin, Attenuation::_11dB);
+        .enable_pin_with_cal::<GpioPin<4>, AdcCalLine<ADC1>>(p.battery_pin, Attenuation::_11dB);
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
     let digital_input = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
@@ -66,7 +67,7 @@ pub async fn sensor_task(
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
-        Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
+        Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
         read_dht11(&mut dht11_sensor, &mut sensor_data).await;
 
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
@@ -162,7 +163,7 @@ async fn read_water_level(
 
 async fn read_battery(
     adc: &mut Adc<'_, ADC1>,
-    pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalCurve<ADC1>>,
+    pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalLine<ADC1>>,
     sensor_data: &mut SensorData,
 ) {
     match sample_adc(adc, pin, "battery").await {
