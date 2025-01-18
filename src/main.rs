@@ -36,6 +36,7 @@ use {defmt_rtt as _, esp_backtrace as _};
 extern crate alloc;
 
 mod config;
+mod dht11;
 mod display;
 mod domain;
 mod relay_task;

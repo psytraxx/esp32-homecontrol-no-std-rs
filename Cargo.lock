@@ -183,15 +183,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dht11"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa82acd8985622297d3feb1e2bf1ce177aaa1d6518df69524110410d08c7fb06"
-dependencies = [
- "embedded-hal 0.2.7",
-]
-
-[[package]]
 name = "document-features"
 version = "0.2.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -352,15 +343,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e9d2e857f87ac832df68fa498d18ddc679175cf3d2e4aa893988e5601baf9438"
 dependencies = [
  "nb 1.1.0",
-]
-
-[[package]]
-name = "embedded-dht-rs"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0b274db5ac4b19bcee3bb492f52ebb5153a3495a3a6e22c9f616f8778df9dc89"
-dependencies = [
- "embedded-hal 1.0.0",
 ]
 
 [[package]]
@@ -780,13 +762,11 @@ version = "0.1.0"
 dependencies = [
  "defmt",
  "defmt-rtt",
- "dht11",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
  "embassy-sync",
  "embassy-time",
- "embedded-dht-rs",
  "embedded-graphics",
  "embedded-hal 1.0.0",
  "embedded-text",

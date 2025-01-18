@@ -2,7 +2,6 @@ use alloc::vec::Vec;
 use defmt::{error, info, warn};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Duration, Timer};
-use embedded_dht_rs::dht11::Dht11;
 use esp_hal::{
     analog::adc::{
         Adc, AdcCalCurve, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation, RegisterAccess,
@@ -14,6 +13,7 @@ use esp_hal::{
 
 use crate::{
     config::SAMPLING_INTERVAL_SECONDS,
+    dht11::Dht11,
     domain::{Sensor, SensorData},
 };
 
@@ -44,9 +44,9 @@ pub async fn sensor_task(
 
     let dht11_pin = OutputOpenDrain::new(p.dht11_pin, Level::High, Pull::None);
 
-    let delay = Delay::new();
+    let mut delay = Delay::new();
 
-    let mut dht11_sensor = Dht11::new(dht11_pin, delay);
+    let mut dht11_sensor = Dht11::new(dht11_pin);
 
     let mut adc2_config = AdcConfig::new();
     let mut moisture_pin = adc2_config
@@ -66,7 +66,7 @@ pub async fn sensor_task(
         let mut sensor_data = SensorData::default();
 
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-        read_dht11(&mut dht11_sensor, &mut sensor_data).await;
+        read_dht11(&mut dht11_sensor, &mut sensor_data, &mut delay).await;
 
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         read_moisture(
@@ -102,14 +102,15 @@ fn read_heap_stats(sensor_data: &mut SensorData) {
 }
 
 async fn read_dht11(
-    dht11_sensor: &mut Dht11<OutputOpenDrain<'_>, Delay>,
+    dht11_sensor: &mut Dht11<OutputOpenDrain<'_>>,
     sensor_data: &mut SensorData,
+    delay: &mut Delay,
 ) {
     for attempt in 1..=DHT11_MAX_RETRIES {
-        match dht11_sensor.read() {
+        match dht11_sensor.read(delay) {
             Ok(measurement) => {
-                let temperature = measurement.temperature;
-                let humidity = measurement.humidity;
+                let temperature = measurement.temperature / 10;
+                let humidity = measurement.humidity / 10;
 
                 info!(
                     "DHT11 reading... Temperature: {}°C, Humidity: {}%",
