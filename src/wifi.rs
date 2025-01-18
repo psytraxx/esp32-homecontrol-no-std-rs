@@ -45,12 +45,8 @@ pub async fn connect_to_wifi(
     let stack_resources: &'static mut _ = STACK_RESOURCES.init(StackResources::new());
     let (stack, runner) = embassy_net::new(wifi_interface, config, stack_resources, seed);
 
-    if let Err(error) = spawner.spawn(connection(controller)) {
-        error!("Cannot spawn connection task: {}", error);
-    }
-    if let Err(error) = spawner.spawn(net_task(runner)) {
-        error!("Cannot spawn network task: {}", error);
-    }
+    spawner.spawn(connection(controller)).ok();
+    spawner.spawn(net_task(runner)).ok();
 
     info!("Wait for network link");
     loop {
