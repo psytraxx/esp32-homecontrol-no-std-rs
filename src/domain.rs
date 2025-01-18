@@ -106,7 +106,7 @@ impl Sensor {
             Sensor::SoilMoisture(_) => "Soil moisture",
             Sensor::WaterLevel(_) => "Water level",
             Sensor::BatteryVoltage(_) => "Battery voltage",
-            Sensor::SoilMoistureRaw(_) => "Soil moisture (raw) mv",
+            Sensor::SoilMoistureRaw(_) => "Soil moisture (mV)",
             Sensor::PumpTrigger(_) => "Pump trigger",
         }
     }

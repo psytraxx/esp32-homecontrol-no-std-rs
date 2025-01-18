@@ -243,14 +243,13 @@ async fn handle_sensor_data(
 fn handle_mqtt_message(topic: &str, data: &[u8]) {
     let msg = str::from_utf8(data).ok();
 
-    info!("Received message: {:?} on topic {}", msg, topic);
-
     if let Some(message) = msg {
+        info!("Received message: {} on topic {}", msg, topic);
         let state = message == "ON";
         info!("Pump state: {}", state);
         ENABLE_PUMP.signal(state);
     } else {
-        info!("Invalid message received");
+        info!("Invalid message received on topic {}", topic);
     }
 }
 
