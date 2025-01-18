@@ -48,8 +48,6 @@ pub enum Sensor {
     BatteryVoltage(u16),
     SoilMoistureRaw(u16),
     PumpTrigger(bool),
-    HeapFree(usize),
-    HeapUsed(usize),
 }
 
 impl From<u16> for WaterLevel {
@@ -83,8 +81,6 @@ impl Sensor {
             Sensor::SoilMoisture(_) => Some("moisture"),
             Sensor::BatteryVoltage(_) => Some("voltage"),
             Sensor::SoilMoistureRaw(_) => Some("voltage"),
-            Sensor::HeapFree(_) => Some("data_size"),
-            Sensor::HeapUsed(_) => Some("data_size"),
             _ => None,
         }
     }
@@ -99,8 +95,6 @@ impl Sensor {
             Sensor::BatteryVoltage(_) => "batteryvoltage",
             Sensor::SoilMoistureRaw(_) => "moistureraw",
             Sensor::PumpTrigger(_) => "pumptrigger",
-            Sensor::HeapFree(_) => "heapfree",
-            Sensor::HeapUsed(_) => "heapused",
         }
     }
 
@@ -114,8 +108,6 @@ impl Sensor {
             Sensor::BatteryVoltage(_) => "Battery voltage",
             Sensor::SoilMoistureRaw(_) => "Soil moisture (raw) mv",
             Sensor::PumpTrigger(_) => "Pump trigger",
-            Sensor::HeapFree(_) => "Heap free",
-            Sensor::HeapUsed(_) => "Heap used",
         }
     }
 
@@ -129,8 +121,6 @@ impl Sensor {
             Sensor::BatteryVoltage(v) => v.to_string(),
             Sensor::SoilMoistureRaw(v) => v.to_string(),
             Sensor::PumpTrigger(v) => v.to_string(),
-            Sensor::HeapFree(v) => v.to_string(),
-            Sensor::HeapUsed(v) => v.to_string(),
         }
     }
 }

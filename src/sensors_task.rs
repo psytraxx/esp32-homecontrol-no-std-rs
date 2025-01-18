@@ -2,6 +2,7 @@ use alloc::vec::Vec;
 use defmt::{error, info, warn};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Duration, Timer};
+use embedded_hal::delay::DelayNs;
 use esp_hal::{
     analog::adc::{
         Adc, AdcCalCurve, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation, RegisterAccess,
@@ -44,9 +45,9 @@ pub async fn sensor_task(
 
     let dht11_pin = OutputOpenDrain::new(p.dht11_pin, Level::High, Pull::None);
 
-    let mut delay = Delay::new();
+    let delay = Delay::new();
 
-    let mut dht11_sensor = Dht11::new(dht11_pin);
+    let mut dht11_sensor = Dht11::new(dht11_pin, delay);
 
     let mut adc2_config = AdcConfig::new();
     let mut moisture_pin = adc2_config
@@ -66,7 +67,7 @@ pub async fn sensor_task(
         let mut sensor_data = SensorData::default();
 
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-        read_dht11(&mut dht11_sensor, &mut sensor_data, &mut delay).await;
+        read_dht11(&mut dht11_sensor, &mut sensor_data).await;
 
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         read_moisture(
@@ -83,8 +84,6 @@ pub async fn sensor_task(
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
         read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
 
-        read_heap_stats(&mut sensor_data);
-
         sender.send(sensor_data).await;
 
         let sampling_period = Duration::from_secs(SAMPLING_INTERVAL_SECONDS);
@@ -92,22 +91,14 @@ pub async fn sensor_task(
     }
 }
 
-fn read_heap_stats(sensor_data: &mut SensorData) {
-    sensor_data
-        .data
-        .push(Sensor::HeapFree(esp_alloc::HEAP.free()));
-    sensor_data
-        .data
-        .push(Sensor::HeapUsed(esp_alloc::HEAP.used()));
-}
-
-async fn read_dht11(
-    dht11_sensor: &mut Dht11<OutputOpenDrain<'_>>,
+async fn read_dht11<D>(
+    dht11_sensor: &mut Dht11<OutputOpenDrain<'_>, D>,
     sensor_data: &mut SensorData,
-    delay: &mut Delay,
-) {
+) where
+    D: DelayNs,
+{
     for attempt in 1..=DHT11_MAX_RETRIES {
-        match dht11_sensor.read(delay) {
+        match dht11_sensor.read() {
             Ok(measurement) => {
                 let temperature = measurement.temperature / 10;
                 let humidity = measurement.humidity / 10;
