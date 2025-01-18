@@ -100,8 +100,8 @@ async fn read_dht11<D>(
     for attempt in 1..=DHT11_MAX_RETRIES {
         match dht11_sensor.read() {
             Ok(measurement) => {
-                let temperature = measurement.temperature / 10;
-                let humidity = measurement.humidity / 10;
+                let temperature = measurement.temperature;
+                let humidity = measurement.humidity;
 
                 info!(
                     "DHT11 reading... Temperature: {}°C, Humidity: {}%",

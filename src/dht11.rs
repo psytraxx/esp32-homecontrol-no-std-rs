@@ -74,7 +74,7 @@ where
         }
 
         Ok(Measurement {
-            temperature: data[1],
+            temperature: data[2],
             humidity: data[0],
         })
     }
