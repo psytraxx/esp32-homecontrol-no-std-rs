@@ -25,7 +25,7 @@ const MOISTURE_MIN: u16 = 1600;
 const MOISTURE_MAX: u16 = 2050;
 const USB_CHARGING_VOLTAGE: u16 = 4200;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
-const MAX_SENSOR_SAMPLE_COUNT: usize = 8;
+const MAX_SENSOR_SAMPLE_COUNT: usize = 3;
 
 pub struct SensorPeripherals {
     pub dht11_pin: GpioPin<1>,
@@ -202,40 +202,11 @@ where
     ADCI: RegisterAccess,
     ADCC: AdcCalScheme<ADCI>,
 {
-    let mut samples = Vec::with_capacity(MAX_SENSOR_SAMPLE_COUNT);
-
-    // Collect samples with a warm-up delay
-    while samples.len() < MAX_SENSOR_SAMPLE_COUNT {
-        Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-        match nb::block!(adc.read_oneshot(pin)) {
-            Ok(value) => samples.push(value),
-            Err(e) => error!(
-                "Error reading sensor {} {:?}",
-                name,
-                defmt::Debug2Format(&e)
-            ),
+    match nb::block!(adc.read_oneshot(pin)) {
+        Ok(value) => Some(value),
+        Err(e) => {
+            error!("Error reading sensor {} {}", name, defmt::Debug2Format(&e));
+            None
         }
     }
-
-    //info!("Samples: {} {}", defmt::Debug2Format(&samples), name);
-
-    if samples.len() <= 2 {
-        warn!("Not enough samples to calculate average for {}", name);
-        return None;
-    }
-
-    // Sort and remove outliers
-    samples.sort_unstable();
-    let samples = &samples[1..samples.len() - 1]; // Remove lowest and highest values
-
-    samples
-        .iter()
-        .map(|&x| x as u32)
-        .sum::<u32>()
-        .checked_div(samples.len() as u32)
-        .map(|avg| avg as u16)
-        .or_else(|| {
-            warn!("Error calculating moisture sensor average for {}", name);
-            None
-        })
 }

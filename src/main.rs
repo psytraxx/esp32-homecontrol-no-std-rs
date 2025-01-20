@@ -68,7 +68,7 @@ async fn main(spawner: Spawner) {
     }
 
     if let Err(error) = main_fallible(spawner).await {
-        error!("Error while running firmware: {:?}", error);
+        error!("Error while running firmware: {}", error);
     }
 }
 
