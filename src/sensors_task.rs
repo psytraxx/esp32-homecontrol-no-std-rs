@@ -80,19 +80,23 @@ pub async fn sensor_task(
                 air_humidity_samples.push(result.humidity);
             }
 
-            if let Some(result) = sample_adc(&mut adc2, &mut moisture_pin, "soil moisture").await {
+            if let Some(result) = sample_adc(&mut adc2, &mut moisture_pin).await {
                 soil_moisture_samples.push(result);
+            } else {
+                warn!("Error reading soil moisture sensor");
             }
 
             if moiture_input_pin.is_high() {
                 moisture_pin_sample_count += 1;
             }
 
-            if let Some(value) = sample_adc(&mut adc2, &mut waterlevel_pin, "water level").await {
+            if let Some(value) = sample_adc(&mut adc2, &mut waterlevel_pin).await {
                 water_level_samples.push(value);
+            } else {
+                warn!("Error reading water level sensor");
             }
 
-            if let Some(value) = sample_adc(&mut adc1, &mut battery_pin, "battery voltage").await {
+            if let Some(value) = sample_adc(&mut adc1, &mut battery_pin).await {
                 let value = value * 2; // The battery voltage divider is 2:1
                 if value < USB_CHARGING_VOLTAGE {
                     battery_voltage_samples.push(value);
@@ -102,24 +106,26 @@ pub async fn sensor_task(
                         value
                     );
                 }
+            } else {
+                warn!("Error reading battery voltage");
             }
         }
 
-        // Calculate the average of the samples and send the data
+        // Calculate the average of the samples
         let mut sensor_data = SensorData::default();
 
         if let Some(avg) = calculate_average(&mut air_humidity_samples) {
             info!("Air humidity: {}%", avg);
             sensor_data.data.push(Sensor::AirHumidity(avg));
         } else {
-            warn!("Error measuring air humidity");
+            warn!("Unable to generate average value of air humidity");
         }
 
         if let Some(avg) = calculate_average(&mut air_temperature_samples) {
             info!("Air temperature: {}°C", avg);
             sensor_data.data.push(Sensor::AirTemperature(avg));
         } else {
-            warn!("Error measuring air temperature");
+            warn!("Unable to generate average value of air temperature");
         }
 
         if let Some(avg) = calculate_average(&mut water_level_samples) {
@@ -127,7 +133,7 @@ pub async fn sensor_task(
             info!("Water level: {}", waterlevel);
             sensor_data.data.push(Sensor::WaterLevel(avg.into()));
         } else {
-            warn!("Error measuring water level");
+            warn!("Unable to generate average value of water level");
         }
 
         if let Some(avg) = calculate_average(&mut soil_moisture_samples) {
@@ -137,7 +143,7 @@ pub async fn sensor_task(
             info!("Normalized Moisture: {}%", moisture);
             sensor_data.data.push(Sensor::SoilMoisture(moisture));
         } else {
-            warn!("Error measuring soil moisture");
+            warn!("Unable to generate average value of soil moisture");
         }
 
         if let Some(avg) = calculate_average(&mut battery_voltage_samples) {
@@ -162,7 +168,6 @@ pub async fn sensor_task(
 async fn sample_adc<PIN, ADCI, ADCC>(
     adc: &mut Adc<'_, ADCI>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
-    name: &str,
 ) -> Option<u16>
 where
     PIN: AdcChannel,
@@ -174,7 +179,7 @@ where
     match nb::block!(adc.read_oneshot(pin)) {
         Ok(value) => Some(value),
         Err(e) => {
-            error!("Error reading sensor {} {}", name, defmt::Debug2Format(&e));
+            error!("Error reading sensor: {}", defmt::Debug2Format(&e));
             None
         }
     }
