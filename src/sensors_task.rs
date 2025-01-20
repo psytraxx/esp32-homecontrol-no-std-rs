@@ -14,13 +14,12 @@ use esp_hal::{
 };
 
 use crate::{
-    config::SAMPLING_INTERVAL_SECONDS,
+    config::AWAKE_DURATION_SECONDS,
     dht11::Dht11,
     domain::{Sensor, SensorData},
 };
 
-const DHT11_MAX_RETRIES: u64 = 3;
-const DHT11_RETRY_DELAY_MS: u64 = 2000;
+const DHT11_DELAY_MS: u64 = 2000;
 const MOISTURE_MIN: u16 = 1600;
 const MOISTURE_MAX: u16 = 2050;
 const USB_CHARGING_VOLTAGE: u16 = 4200;
@@ -67,120 +66,136 @@ pub async fn sensor_task(
         info!("Reading sensors");
         let mut sensor_data = SensorData::default();
 
-        Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
-        read_dht11(&mut dht11_sensor, &mut sensor_data).await;
+        Timer::after(Duration::from_millis(DHT11_DELAY_MS)).await;
+        if let Some(result) = read_dht11(&mut dht11_sensor).await {
+            sensor_data
+                .data
+                .push(Sensor::AirTemperature(result.temperature));
+            sensor_data.data.push(Sensor::AirHumidity(result.humidity));
+        }
 
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-        read_moisture(
-            &mut adc2,
-            &mut moisture_pin,
-            &digital_input,
-            &mut sensor_data,
-        )
-        .await;
+        if let Some(result) = read_moisture(&mut adc2, &mut moisture_pin, &digital_input).await {
+            sensor_data.data.push(Sensor::SoilMoisture(result.moisture));
+            sensor_data
+                .data
+                .push(Sensor::SoilMoistureRaw(result.moisture_raw));
+            sensor_data
+                .data
+                .push(Sensor::PumpTrigger(result.moisture_trigger));
+        }
 
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-        read_water_level(&mut adc2, &mut waterlevel_pin, &mut sensor_data).await;
+        if let Some(value) = read_water_level(&mut adc2, &mut waterlevel_pin).await {
+            sensor_data.data.push(Sensor::WaterLevel(value.into()));
+        }
 
         Timer::after(Duration::from_millis(SENSOR_WARMUP_DELAY_MILLISECONDS)).await;
-        read_battery(&mut adc1, &mut battery_pin, &mut sensor_data).await;
+        if let Some(value) = read_battery(&mut adc1, &mut battery_pin).await {
+            sensor_data.data.push(Sensor::BatteryVoltage(value));
+        }
 
         sender.send(sensor_data).await;
 
-        let sampling_period = Duration::from_secs(SAMPLING_INTERVAL_SECONDS);
+        let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS);
         Timer::after(sampling_period).await;
     }
 }
 
-async fn read_dht11<D>(
-    dht11_sensor: &mut Dht11<OutputOpenDrain<'_>, D>,
-    sensor_data: &mut SensorData,
-) where
+struct DHT11Reading {
+    temperature: u8,
+    humidity: u8,
+}
+
+async fn read_dht11<D>(dht11_sensor: &mut Dht11<OutputOpenDrain<'_>, D>) -> Option<DHT11Reading>
+where
     D: DelayNs,
 {
-    for attempt in 1..=DHT11_MAX_RETRIES {
-        match dht11_sensor.read() {
-            Ok(measurement) => {
-                let temperature = measurement.temperature;
-                let humidity = measurement.humidity;
+    match dht11_sensor.read() {
+        Ok(measurement) => {
+            let temperature = measurement.temperature;
+            let humidity = measurement.humidity;
 
-                info!(
-                    "DHT11 reading... Temperature: {}°C, Humidity: {}%",
-                    temperature, humidity
-                );
+            info!(
+                "DHT11 reading... Temperature: {}°C, Humidity: {}%",
+                temperature, humidity
+            );
 
-                sensor_data.data.push(Sensor::AirTemperature(temperature));
-                sensor_data.data.push(Sensor::AirHumidity(humidity));
-                return;
-            }
-            Err(_) => {
-                error!(
-                    "Error reading DHT11 sensor (attempt {}/{})",
-                    attempt, DHT11_MAX_RETRIES
-                );
-                Timer::after(Duration::from_millis(DHT11_RETRY_DELAY_MS)).await;
-            }
+            Some(DHT11Reading {
+                temperature,
+                humidity,
+            })
+        }
+        Err(_) => {
+            error!("Error reading DHT11 sensor");
+            None
         }
     }
+}
+
+struct MoistureReading {
+    moisture: u8,
+    moisture_raw: u16,
+    moisture_trigger: bool,
 }
 
 async fn read_moisture<'a>(
     adc: &mut Adc<'a, ADC2>,
     pin_analog: &mut AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
     pin_digial: &Input<'a>,
-    sensor_data: &mut SensorData,
-) {
+) -> Option<MoistureReading> {
     if let Some(sample) = sample_adc(adc, pin_analog, "moisture").await {
         info!("Analog Moisture reading: {}", sample);
-        sensor_data.data.push(Sensor::SoilMoistureRaw(sample));
-
         let moisture = (normalise_humidity_data(sample) * 100.0) as u8;
         info!("Normalized Moisture reading: {}%", moisture);
-        sensor_data.data.push(Sensor::SoilMoisture(moisture));
-
         let moisture_trigger = pin_digial.is_high();
-
-        sensor_data.data.push(Sensor::PumpTrigger(moisture_trigger));
-
         info!("Moisture trigger: {}", moisture_trigger);
+
+        Some(MoistureReading {
+            moisture,
+            moisture_raw: sample,
+            moisture_trigger,
+        })
     } else {
         error!("Error calculating moisture sensor average");
+        None
     }
 }
 
 async fn read_water_level(
     adc: &mut Adc<'_, ADC2>,
     pin: &mut AdcPin<GpioPin<12>, ADC2>,
-    sensor_data: &mut SensorData,
-) {
+) -> Option<u16> {
     if let Some(sample) = sample_adc(adc, pin, "water_level").await {
         info!("Water level reading: {}", sample);
-        sensor_data.data.push(Sensor::WaterLevel(sample.into()));
+        Some(sample)
     } else {
         error!("Error calculating water level sensor average");
+        None
     }
 }
 
 async fn read_battery(
     adc: &mut Adc<'_, ADC1>,
     pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalLine<ADC1>>,
-    sensor_data: &mut SensorData,
-) {
+) -> Option<u16> {
     match sample_adc(adc, pin, "battery").await {
         Some(sample) => {
             let sample = sample * 2; // The battery voltage divider is 2:1
             if sample < USB_CHARGING_VOLTAGE {
                 info!("Battery: {}mV", sample);
-                sensor_data.data.push(Sensor::BatteryVoltage(sample));
+                Some(sample)
             } else {
                 warn!(
                     "Battery voltage too high - looks we are charging on USB: {}mV",
                     sample
                 );
+                None
             }
         }
         None => {
             error!("Error calculating battery voltage");
+            None
         }
     }
 }
