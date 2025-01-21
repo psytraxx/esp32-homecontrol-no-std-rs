@@ -25,8 +25,8 @@ use static_cell::StaticCell;
 
 use crate::{
     config::{
-        DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_SWITCH,
-        HOMEASSISTANT_SENSOR_TOPIC, SAMPLING_INTERVAL_SECONDS,
+        AWAKE_DURATION_SECONDS, DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
+        HOMEASSISTANT_SENSOR_SWITCH, HOMEASSISTANT_SENSOR_TOPIC,
     },
     display::{self, Display, DisplayTrait},
     domain::{Sensor, SensorData, WaterLevel},
@@ -64,7 +64,7 @@ pub async fn update_task(
         let mut client = match initialize_mqtt_client(stack, resources).await {
             Ok(client) => client,
             Err(e) => {
-                error!("Error initializing MQTT client: {:?}", e);
+                error!("Error initializing MQTT client: {}", e);
                 continue;
             }
         };
@@ -73,7 +73,7 @@ pub async fn update_task(
             .subscribe_to_topic("esp32_breadboard/pump/command")
             .await
         {
-            error!("Error subscribing to pump command topic: {:?}", e);
+            error!("Error subscribing to pump command topic: {}", e);
             continue;
         }
 
@@ -82,7 +82,7 @@ pub async fn update_task(
         match select(receiver.receive(), client.receive_message()).await {
             Either::First(sensor_data) => {
                 if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await {
-                    error!("Error handling sensor data: {:?}", e);
+                    error!("Error handling sensor data: {}", e);
                     continue;
                 }
             }
@@ -91,7 +91,7 @@ pub async fn update_task(
                     handle_mqtt_message(topic, data);
                 }
                 Err(e) => {
-                    error!("Error handling MQTT message: {:?}", e);
+                    error!("Error handling MQTT message: {}", e);
                     continue;
                 }
             },
@@ -233,7 +233,7 @@ async fn handle_sensor_data(
         )
         .await?;
 
-    Timer::after(Duration::from_secs(SAMPLING_INTERVAL_SECONDS / 2)).await;
+    Timer::after(Duration::from_secs(AWAKE_DURATION_SECONDS)).await;
 
     display.enable_powersave()?;
 

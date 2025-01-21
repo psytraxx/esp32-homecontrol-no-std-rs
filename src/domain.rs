@@ -4,6 +4,7 @@ use alloc::{
     vec::Vec,
 };
 use core::fmt::{Display, Formatter, Result};
+use defmt::Format;
 use serde::{Deserialize, Serialize};
 
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
@@ -23,7 +24,7 @@ impl Display for SensorData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Format)]
 pub enum WaterLevel {
     Full,
     Empty,

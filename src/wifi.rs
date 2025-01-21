@@ -87,7 +87,7 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
     info!("Start connection task, device capabilities:");
     let caps = controller.capabilities().unwrap();
     caps.iter().for_each(|o| {
-        info!("{:?}", o);
+        info!("{}", o);
     });
 
     loop {
