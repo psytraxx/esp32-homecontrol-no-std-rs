@@ -40,15 +40,11 @@ pub struct SensorPeripherals {
 #[embassy_executor::task]
 pub async fn sensor_task(
     sender: Sender<'static, NoopRawMutex, SensorData, 3>,
-    p: SensorPeripherals,
+    mut p: SensorPeripherals,
 ) {
     info!("Create");
 
-    let dht11_digital_pin = OutputOpenDrain::new(p.dht11_digital_pin, Level::High, Pull::None);
-
     let delay = Delay::new();
-
-    let mut dht11_sensor = Dht11::new(dht11_digital_pin, delay);
 
     let mut adc2_config = AdcConfig::new();
     let mut moisture_pin = adc2_config
@@ -81,6 +77,9 @@ pub async fn sensor_task(
 
         for i in 0..SENSOR_SAMPLE_COUNT {
             info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
+
+            let dht11_pin = OutputOpenDrain::new(&mut p.dht11_digital_pin, Level::High, Pull::None);
+            let mut dht11_sensor: Dht11<OutputOpenDrain<'_>, Delay> = Dht11::new(dht11_pin, delay);
 
             // DHT11 needs a longer initial delay
             Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;

@@ -20,6 +20,7 @@ pub enum Error<E> {
 /// A DHT11 device.
 pub struct Dht11<GPIO, D>
 where
+    GPIO: InputPin + OutputPin,
     D: DelayNs,
 {
     /// The concrete GPIO pin implementation.
@@ -116,5 +117,18 @@ where
         }
 
         Ok(u32::from(count))
+    }
+}
+
+impl<GPIO, D, E> Drop for Dht11<GPIO, D>
+where
+    GPIO: InputPin<Error = E> + OutputPin<Error = E>,
+    D: DelayNs,
+{
+    fn drop(&mut self) {
+        // Set pin high (floating with pull-up) as safe state
+        // Ignore errors during drop
+        let _ = self.gpio.set_high();
+        self.delay.delay_us(40);
     }
 }
