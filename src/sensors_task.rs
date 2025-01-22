@@ -18,10 +18,10 @@ use crate::{
     domain::{Sensor, SensorData, WaterLevel},
 };
 
-const DHT11_DELAY_MS: u64 = 2000;
-const MOISTURE_MIN: u16 = 1600;
-const MOISTURE_MAX: u16 = 2050;
+const MOISTURE_MIN: u16 = 1700;
+const MOISTURE_MAX: u16 = 2000;
 const USB_CHARGING_VOLTAGE: u16 = 4200;
+const DHT11_WARMUP_DELAY_MILLISECONDS: u64 = 2000;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
 const SENSOR_SAMPLE_COUNT: usize = 5;
 
@@ -74,7 +74,7 @@ pub async fn sensor_task(
             info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
 
             // DHT11 needs a longer initial delay
-            Timer::after(Duration::from_millis(DHT11_DELAY_MS)).await;
+            Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;
             if let Ok(result) = dht11_sensor.read() {
                 air_temperature_samples.push(result.temperature);
                 air_humidity_samples.push(result.humidity);
