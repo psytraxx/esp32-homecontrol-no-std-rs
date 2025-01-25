@@ -8,7 +8,7 @@ use esp_hal::{
         RegisterAccess,
     },
     delay::Delay,
-    gpio::{GpioPin, Input, Level, OutputOpenDrain, Pull},
+    gpio::{GpioPin, Input, Level, Output, OutputOpenDrain, Pull},
     peripherals::{ADC1, ADC2},
 };
 
@@ -26,11 +26,13 @@ const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
 const SENSOR_SAMPLE_COUNT: usize = 5;
 
 pub struct SensorPeripherals {
-    pub dht11_pin: GpioPin<1>,
+    pub dht11_digital_pin: GpioPin<1>,
     pub battery_pin: GpioPin<4>,
     pub moisture_digital_pin: GpioPin<10>,
+    pub moisture_power_pin: GpioPin<16>,
     pub moisture_analog_pin: GpioPin<11>,
-    pub water_level_pin: GpioPin<12>,
+    pub water_level_analog_pin: GpioPin<12>,
+    pub water_level_power_pin: GpioPin<21>,
     pub adc1: ADC1,
     pub adc2: ADC2,
 }
@@ -42,16 +44,16 @@ pub async fn sensor_task(
 ) {
     info!("Create");
 
-    let dht11_pin = OutputOpenDrain::new(p.dht11_pin, Level::High, Pull::None);
+    let dht11_digital_pin = OutputOpenDrain::new(p.dht11_digital_pin, Level::High, Pull::None);
 
     let delay = Delay::new();
 
-    let mut dht11_sensor = Dht11::new(dht11_pin, delay);
+    let mut dht11_sensor = Dht11::new(dht11_digital_pin, delay);
 
     let mut adc2_config = AdcConfig::new();
     let mut moisture_pin = adc2_config
         .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.moisture_analog_pin, Attenuation::_11dB);
-    let mut waterlevel_pin = adc2_config.enable_pin(p.water_level_pin, Attenuation::_11dB);
+    let mut waterlevel_pin = adc2_config.enable_pin(p.water_level_analog_pin, Attenuation::_11dB);
     let mut adc2 = Adc::new(p.adc2, adc2_config);
 
     let mut adc1_config = AdcConfig::new();
@@ -59,7 +61,10 @@ pub async fn sensor_task(
         .enable_pin_with_cal::<GpioPin<4>, AdcCalLine<ADC1>>(p.battery_pin, Attenuation::_11dB);
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
-    let moiture_input_pin = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
+    let moisture_input_pin = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
+
+    let mut moisture_power_pin = Output::new(p.moisture_power_pin, Level::Low);
+    let mut water_level_power_pin = Output::new(p.water_level_power_pin, Level::Low);
 
     loop {
         // Collect samples for each sensor type
@@ -69,6 +74,10 @@ pub async fn sensor_task(
         let mut moisture_pin_sample_count: usize = 0;
         let mut battery_voltage_samples: vec::Vec<u16> = vec![];
         let mut water_level_samples: vec::Vec<u16> = vec![];
+
+        // Power on the sensors
+        moisture_power_pin.set_high();
+        water_level_power_pin.set_high();
 
         for i in 0..SENSOR_SAMPLE_COUNT {
             info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
@@ -86,7 +95,7 @@ pub async fn sensor_task(
                 warn!("Error reading soil moisture sensor");
             }
 
-            if moiture_input_pin.is_high() {
+            if moisture_input_pin.is_high() {
                 moisture_pin_sample_count += 1;
             }
 
@@ -158,6 +167,10 @@ pub async fn sensor_task(
         sensor_data.data.push(Sensor::PumpTrigger(pump_trigger));
 
         sender.send(sensor_data).await;
+
+        // Power off the sensors
+        moisture_power_pin.set_low();
+        water_level_power_pin.set_low();
 
         let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS);
         Timer::after(sampling_period).await;

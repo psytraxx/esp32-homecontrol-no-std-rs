@@ -15,12 +15,14 @@ Built for [LilyGO T-Display-S3](https://github.com/Xinyuan-LilyGO/T-Display-S3) 
 
 ## Wiring
 
-- DHT11 (Temperature/Humidity) → GPIO1
+- DHT11 Digital (Temperature/Humidity) → GPIO1
 - Water Pump Relay → GPIO2
 - Battery Voltage → GPIO4
 - Moisture Digital → GPIO10
 - Moisture Analog → GPIO11
-- Water Level → GPIO12
+- Moisture Power → GPIO18
+- Water Level Analog → GPIO12
+- Water Level Power → GPIO21
 
 ## Core Features
 

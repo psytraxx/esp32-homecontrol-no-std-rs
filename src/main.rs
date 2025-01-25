@@ -137,11 +137,13 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
 
     // see https://github.com/Xinyuan-LilyGO/T-Display-S3/blob/main/image/T-DISPLAY-S3.jpg
     let sensor_peripherals = SensorPeripherals {
-        dht11_pin: peripherals.GPIO1,
+        dht11_digital_pin: peripherals.GPIO1,
         battery_pin: peripherals.GPIO4,
         moisture_digital_pin: peripherals.GPIO10,
         moisture_analog_pin: peripherals.GPIO11,
-        water_level_pin: peripherals.GPIO12,
+        moisture_power_pin: peripherals.GPIO16,
+        water_level_analog_pin: peripherals.GPIO12,
+        water_level_power_pin: peripherals.GPIO21,
         adc1: peripherals.ADC1,
         adc2: peripherals.ADC2,
     };
