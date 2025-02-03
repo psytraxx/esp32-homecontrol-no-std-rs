@@ -18,8 +18,6 @@ use crate::{
     domain::{Sensor, SensorData, WaterLevel},
 };
 
-const MOISTURE_MIN: u16 = 400;
-const MOISTURE_MAX: u16 = 800;
 const USB_CHARGING_VOLTAGE: u16 = 4200;
 const DHT11_WARMUP_DELAY_MILLISECONDS: u64 = 2000;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
@@ -147,9 +145,7 @@ pub async fn sensor_task(
         if let Some(avg) = calculate_average(&mut soil_moisture_samples) {
             info!("Raw Moisture: {}", avg);
             sensor_data.data.push(Sensor::SoilMoistureRaw(avg));
-            let moisture = (normalise_humidity_data(avg) * 100.0) as u8;
-            info!("Normalized Moisture: {}%", moisture);
-            sensor_data.data.push(Sensor::SoilMoisture(moisture));
+            sensor_data.data.push(Sensor::SoilMoisture(avg.into()));
         } else {
             warn!("Unable to generate average value of soil moisture");
         }
@@ -215,11 +211,4 @@ where
     sum.checked_div(samples.len() as u32)
         .and_then(|avg| avg.try_into().ok())
         .or(None)
-}
-
-/// We normalize the values to be between 0 and 1, with 1 representing water and 0 representing air.
-fn normalise_humidity_data(readout: u16) -> f32 {
-    let clamped = readout.clamp(MOISTURE_MIN, MOISTURE_MAX);
-
-    (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32
 }
