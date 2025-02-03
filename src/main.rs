@@ -62,17 +62,17 @@ static mut DISCOVERY_MESSAGES_SENT: bool = false;
 #[main]
 async fn main(spawner: Spawner) {
     let boot_count = unsafe { BOOT_COUNT };
-    info!("Current boot count = {}", boot_count);
+    info!("Current boot count = {}", &boot_count);
     unsafe {
         BOOT_COUNT = boot_count + 1;
     }
 
-    if let Err(error) = main_fallible(spawner).await {
+    if let Err(error) = main_fallible(spawner, boot_count).await {
         error!("Error while running firmware: {}", error);
     }
 }
 
-async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
+async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let peripherals = esp_hal::init({
         esp_hal::Config::default()
             .with_cpu_clock(CpuClock::max())
@@ -123,7 +123,13 @@ async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
     let mut display = Display::new(display_peripherals)?;
 
     if let Some(stack_config) = stack.config_v4() {
-        display.write(format!("Booting... {}", stack_config.address).as_str())?;
+        display.write_multiline(
+            format!(
+                "Client IP: {}\nBoot count: {}",
+                stack_config.address, boot_count
+            )
+            .as_str(),
+        )?;
     } else {
         error!("Failed to get stack config");
     }
