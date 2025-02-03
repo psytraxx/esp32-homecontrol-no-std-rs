@@ -55,12 +55,10 @@ impl From<u16> for MoistureLevel {
 
         let value = (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32;
 
-        if value > MOISTURE_WET_THRESHOLD {
-            Self::Wet
-        } else if value < MOISTURE_DRY_THRESHOLD {
-            Self::Dry
-        } else {
-            Self::Moist
+        match value {
+            p if p > MOISTURE_WET_THRESHOLD => Self::Wet,
+            p if p < MOISTURE_DRY_THRESHOLD => Self::Dry,
+            _ => Self::Moist,
         }
     }
 }
@@ -109,6 +107,7 @@ impl Sensor {
             Sensor::AirTemperature(_) => Some("°C"),
             Sensor::AirHumidity(_) => Some("%"),
             Sensor::BatteryVoltage(_) => Some("mV"),
+            Sensor::SoilMoistureRaw(_) => Some("mV"),
             _ => None,
         }
     }
