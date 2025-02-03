@@ -109,7 +109,6 @@ impl Sensor {
             Sensor::AirTemperature(_) => Some("°C"),
             Sensor::AirHumidity(_) => Some("%"),
             Sensor::BatteryVoltage(_) => Some("mV"),
-            Sensor::SoilMoisture(_) => Some("%"),
             _ => None,
         }
     }
