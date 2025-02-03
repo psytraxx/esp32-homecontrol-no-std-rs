@@ -119,7 +119,6 @@ impl Sensor {
         match self {
             Sensor::AirTemperature(_) => Some("temperature"),
             Sensor::AirHumidity(_) => Some("humidity"),
-            Sensor::SoilMoisture(_) => Some("moisture"),
             Sensor::BatteryVoltage(_) => Some("voltage"),
             Sensor::SoilMoistureRaw(_) => Some("voltage"),
             _ => None,
