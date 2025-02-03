@@ -18,8 +18,8 @@ use crate::{
     domain::{Sensor, SensorData, WaterLevel},
 };
 
-const MOISTURE_MIN: u16 = 1700;
-const MOISTURE_MAX: u16 = 2000;
+const MOISTURE_MIN: u16 = 400;
+const MOISTURE_MAX: u16 = 800;
 const USB_CHARGING_VOLTAGE: u16 = 4200;
 const DHT11_WARMUP_DELAY_MILLISECONDS: u64 = 2000;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
