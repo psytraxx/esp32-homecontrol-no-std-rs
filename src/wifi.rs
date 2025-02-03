@@ -4,13 +4,15 @@ use embassy_executor::Spawner;
 use embassy_net::{Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
-use esp_hal::{peripherals, rng::Rng};
+use esp_hal::{
+    peripherals::{self, RNG},
+    rng::Rng,
+};
 use esp_wifi::wifi::{
     ClientConfiguration, Configuration, WifiController, WifiDevice, WifiError, WifiEvent,
     WifiStaDevice, WifiState,
 };
 use heapless::String;
-use rand_core::RngCore;
 use static_cell::StaticCell;
 
 use crate::config::DEVICE_ID;
@@ -25,9 +27,11 @@ pub async fn connect_to_wifi(
     wifi: peripherals::WIFI,
     timer: esp_hal::timer::timg::Timer,
     radio_clocks: peripherals::RADIO_CLK,
-    mut rng: Rng,
+    rng: RNG,
     spawner: Spawner,
 ) -> Result<Stack<'static>, WifiError> {
+    let mut rng = Rng::new(rng);
+
     static INIT: StaticCell<esp_wifi::EspWifiController<'static>> = StaticCell::new();
     let init = INIT.init(esp_wifi::init(timer, rng, radio_clocks).unwrap());
 
@@ -38,12 +42,12 @@ pub async fn connect_to_wifi(
     let mut dhcp_config = embassy_net::DhcpConfig::default();
     dhcp_config.hostname = Some(String::<32>::from_str(DEVICE_ID).unwrap());
 
-    let seed = rng.next_u64();
+    let seed = rng.random();
     let config = embassy_net::Config::dhcpv4(dhcp_config);
 
     info!("Initialize network stack");
     let stack_resources: &'static mut _ = STACK_RESOURCES.init(StackResources::new());
-    let (stack, runner) = embassy_net::new(wifi_interface, config, stack_resources, seed);
+    let (stack, runner) = embassy_net::new(wifi_interface, config, stack_resources, seed.into());
 
     spawner.spawn(connection(controller)).ok();
     spawner.spawn(net_task(runner)).ok();

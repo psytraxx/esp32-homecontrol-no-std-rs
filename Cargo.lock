@@ -778,7 +778,6 @@ dependencies = [
  "heapless",
  "mipidsi",
  "nb 1.1.0",
- "rand_core",
  "rust-mqtt",
  "serde",
  "serde_json",

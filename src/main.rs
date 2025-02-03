@@ -20,7 +20,6 @@ use esp_hal::{
     gpio::{Level, Output},
     psram::PsramConfig,
     ram,
-    rng::Rng,
     timer::timg::TimerGroup,
 };
 use esp_hal_embassy::main;
@@ -87,8 +86,6 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
 
     psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
-    let rng = Rng::new(peripherals.RNG);
-
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let timg1 = TimerGroup::new(peripherals.TIMG1);
 
@@ -98,7 +95,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
         peripherals.WIFI,
         timg1.timer0,
         peripherals.RADIO_CLK,
-        rng,
+        peripherals.RNG,
         spawner,
     )
     .await?;
