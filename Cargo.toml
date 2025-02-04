@@ -10,7 +10,7 @@ esp-backtrace = { version = "0.15.0", features = [
     "panic-handler",
     "defmt",
 ] }
-esp-hal = { version = "0.23.1", features = ["esp32s3", "defmt", "octal-psram"] }
+esp-hal = { version = "0.23.1", features = ["esp32s3", "defmt"] }
 esp-alloc = { version = "0.6.0" }
 embassy-net = { version = "0.6.0", features = [
     "tcp",
