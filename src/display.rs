@@ -1,10 +1,9 @@
 use defmt::Format;
 use embedded_graphics::draw_target::DrawTarget;
-use embedded_graphics::geometry::{Dimensions, Point};
+use embedded_graphics::geometry::Dimensions;
 use embedded_graphics::mono_font::iso_8859_1::FONT_10X20 as FONT;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
-use embedded_graphics::text::{Baseline, Text};
 use embedded_graphics::Drawable;
 use embedded_text::alignment::HorizontalAlignment;
 use embedded_text::style::{HeightMode, TextBoxStyleBuilder};
@@ -46,7 +45,6 @@ pub struct Display<'a> {
 }
 
 pub trait DisplayTrait {
-    fn write(&mut self, text: &str) -> Result<(), Error>;
     fn write_multiline(&mut self, text: &str) -> Result<(), Error>;
     fn enable_powersave(&mut self) -> Result<(), Error>;
 }
@@ -121,13 +119,6 @@ impl Display<'_> {
 }
 
 impl DisplayTrait for Display<'_> {
-    fn write(&mut self, text: &str) -> Result<(), Error> {
-        self.disable_powersave()?;
-        Text::with_baseline(text, Point::new(0, 0), TEXT_STYLE, Baseline::Top)
-            .draw(&mut self.display)?;
-        Ok(())
-    }
-
     fn write_multiline(&mut self, text: &str) -> Result<(), Error> {
         self.disable_powersave()?;
         let textbox_style = TextBoxStyleBuilder::new()

@@ -40,7 +40,6 @@ esp-hal-embassy = { version = "0.6.0", features = ["esp32s3", "defmt"] }
 rust-mqtt = { version = "0.3.0", default-features = false, features = [
     "defmt",
 ] }
-rand_core = "0.6.4"
 embedded-text = "0.7.2"
 embedded-graphics = { version = "0.8.1", features = ["defmt"] }
 embedded-hal = { version = "1.0.0", features = ["defmt-03"] }

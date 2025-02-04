@@ -8,6 +8,14 @@ use defmt::Format;
 use serde::{Deserialize, Serialize};
 
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
+//soil is wet
+const MOISTURE_MIN: u16 = 400;
+// soil is dry
+const MOISTURE_MAX: u16 = 800;
+//  more than 80% is wet
+const MOISTURE_WET_THRESHOLD: f32 = 0.8;
+// less than 15% is dry
+const MOISTURE_DRY_THRESHOLD: f32 = 0.15;
 
 /// Struct to hold sensor data
 #[derive(Default, Debug)]
@@ -25,6 +33,37 @@ impl Display for SensorData {
 }
 
 #[derive(Debug, Serialize, Deserialize, Format)]
+pub enum MoistureLevel {
+    Wet,
+    Moist,
+    Dry,
+}
+
+impl Display for MoistureLevel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Self::Wet => write!(f, "Wet"),
+            Self::Moist => write!(f, "Moist"),
+            Self::Dry => write!(f, "Dry"),
+        }
+    }
+}
+
+impl From<u16> for MoistureLevel {
+    fn from(value: u16) -> Self {
+        let clamped = value.clamp(MOISTURE_MIN, MOISTURE_MAX);
+
+        let value = (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32;
+
+        match value {
+            p if p > MOISTURE_WET_THRESHOLD => Self::Wet,
+            p if p < MOISTURE_DRY_THRESHOLD => Self::Dry,
+            _ => Self::Moist,
+        }
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize, Format)]
 pub enum WaterLevel {
     Full,
     Empty,
@@ -33,8 +72,18 @@ pub enum WaterLevel {
 impl Display for WaterLevel {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            WaterLevel::Full => write!(f, "Full"),
-            WaterLevel::Empty => write!(f, "Empty"),
+            Self::Full => write!(f, "Full"),
+            Self::Empty => write!(f, "Empty"),
+        }
+    }
+}
+
+impl From<u16> for WaterLevel {
+    fn from(value: u16) -> Self {
+        if value < WATER_LEVEL_THRESHOLD {
+            Self::Empty
+        } else {
+            Self::Full
         }
     }
 }
@@ -45,20 +94,10 @@ pub enum Sensor {
     WaterLevel(WaterLevel),
     AirTemperature(u8),
     AirHumidity(u8),
-    SoilMoisture(u8),
+    SoilMoisture(MoistureLevel),
     BatteryVoltage(u16),
     SoilMoistureRaw(u16),
     PumpTrigger(bool),
-}
-
-impl From<u16> for WaterLevel {
-    fn from(value: u16) -> Self {
-        if value < WATER_LEVEL_THRESHOLD {
-            WaterLevel::Empty
-        } else {
-            WaterLevel::Full
-        }
-    }
 }
 
 impl Sensor {
@@ -68,7 +107,7 @@ impl Sensor {
             Sensor::AirTemperature(_) => Some("°C"),
             Sensor::AirHumidity(_) => Some("%"),
             Sensor::BatteryVoltage(_) => Some("mV"),
-            Sensor::SoilMoisture(_) => Some("%"),
+            Sensor::SoilMoistureRaw(_) => Some("mV"),
             _ => None,
         }
     }
@@ -79,7 +118,6 @@ impl Sensor {
         match self {
             Sensor::AirTemperature(_) => Some("temperature"),
             Sensor::AirHumidity(_) => Some("humidity"),
-            Sensor::SoilMoisture(_) => Some("moisture"),
             Sensor::BatteryVoltage(_) => Some("voltage"),
             Sensor::SoilMoistureRaw(_) => Some("voltage"),
             _ => None,
