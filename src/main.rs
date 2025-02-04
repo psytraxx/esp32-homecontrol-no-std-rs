@@ -74,7 +74,7 @@ async fn main(spawner: Spawner) {
 async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let peripherals = esp_hal::init({
         esp_hal::Config::default()
-            .with_cpu_clock(CpuClock::max())
+            .with_cpu_clock(CpuClock::_160MHz)
             .with_psram(PsramConfig::default())
     });
 
@@ -167,7 +167,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
 
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
     info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
-    enter_deep(peripherals.LPWR, deep_sleep_duration);
+    enter_deep(peripherals.GPIO14, peripherals.LPWR, deep_sleep_duration);
 }
 
 #[derive(Debug, defmt::Format)]
