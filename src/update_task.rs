@@ -162,7 +162,7 @@ async fn handle_sensor_data(
                 .await?;
         }
 
-        let (discovery_topic, message) = get_pump_discovery();
+        let (discovery_topic, message) = get_pump_discovery("pump");
         client
             .send_message(
                 &discovery_topic,
@@ -175,6 +175,8 @@ async fn handle_sensor_data(
         unsafe {
             DISCOVERY_MESSAGES_SENT = true;
         }
+    } else {
+        info!("Discovery messages already sent");
     }
 
     // act on sensor data
@@ -259,6 +261,8 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     let mut payload = get_common_device_info(topic, s.name());
     payload["state_topic"] = json!(format!("{}/{}", DEVICE_ID, topic));
     payload["value_template"] = json!("{{ value_json.value }}");
+    payload["platform"] = json!("sensor");
+    payload["unique_id"] = json!(format!("{}_{}", DEVICE_ID, topic));
 
     let device_class = s.device_class();
     if let Some(device_class) = device_class {
@@ -283,11 +287,7 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     (discovery_topic, payload.to_string())
 }
 
-fn get_pump_discovery() -> (String, String) {
-    get_switch_discovery("pump")
-}
-
-fn get_switch_discovery(topic: &str) -> (String, String) {
+fn get_pump_discovery(topic: &str) -> (String, String) {
     let mut payload = get_common_device_info(topic, "Pump");
     payload["state_topic"] = json!(format!("{}/{}/state", DEVICE_ID, topic));
     payload["command_topic"] = json!(format!("{}/{}/command", DEVICE_ID, topic));

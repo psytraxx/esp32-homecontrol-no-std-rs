@@ -71,7 +71,7 @@ async fn main(spawner: Spawner) {
 }
 
 async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
-    let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::_80MHz));
+    let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::_160MHz));
 
     // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low);
