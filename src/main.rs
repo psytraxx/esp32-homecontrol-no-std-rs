@@ -14,11 +14,10 @@ use embassy_sync::{
     signal::Signal,
 };
 use embassy_time::{Duration, Timer};
-use esp_alloc::{heap_allocator, psram_allocator};
+use esp_alloc::heap_allocator;
 use esp_hal::{
     clock::CpuClock,
     gpio::{Level, Output},
-    psram::PsramConfig,
     ram,
     timer::timg::TimerGroup,
 };
@@ -72,19 +71,13 @@ async fn main(spawner: Spawner) {
 }
 
 async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
-    let peripherals = esp_hal::init({
-        esp_hal::Config::default()
-            .with_cpu_clock(CpuClock::max())
-            .with_psram(PsramConfig::default())
-    });
+    let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::_160MHz));
 
     // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low);
     power_pin.set_high();
 
     heap_allocator!(72 * 1024);
-
-    psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let timg1 = TimerGroup::new(peripherals.TIMG1);
@@ -167,7 +160,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
 
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
     info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
-    enter_deep(peripherals.LPWR, deep_sleep_duration);
+    enter_deep(peripherals.GPIO14, peripherals.LPWR, deep_sleep_duration);
 }
 
 #[derive(Debug, defmt::Format)]
