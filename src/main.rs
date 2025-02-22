@@ -1,6 +1,5 @@
 #![no_std]
 #![no_main]
-#![feature(async_closure)]
 
 use alloc::format;
 use config::{AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS};
