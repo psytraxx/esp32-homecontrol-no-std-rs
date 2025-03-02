@@ -9,9 +9,9 @@ use serde::{Deserialize, Serialize};
 
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
 //soil is wet
-const MOISTURE_MIN: u16 = 500;
+const MOISTURE_MIN: u16 = 550;
 // soil is dry
-const MOISTURE_MAX: u16 = 700;
+const MOISTURE_MAX: u16 = 1000;
 //  more than 80% is wet
 const MOISTURE_WET_THRESHOLD: f32 = 0.8;
 // less than 15% is dry

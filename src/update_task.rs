@@ -179,14 +179,14 @@ async fn handle_sensor_data(
         info!("Discovery messages already sent");
     }
 
-    // act on sensor data
+    // act on sensor data - turn pump on/off
     sensor_data.data.iter().for_each(|entry| {
         if let Sensor::WaterLevel(WaterLevel::Full) = entry {
+            // Water level is full, stop the pump in any case if it's running
             info!("Water level is full, stopping pump");
             ENABLE_PUMP.signal(false);
-        }
-
-        if let Sensor::PumpTrigger(enabled) = entry {
+        } else if let Sensor::PumpTrigger(enabled) = entry {
+            // Pump trigger is enabled, start the pump
             if *enabled {
                 info!("Soil moisture is low, starting pump");
                 ENABLE_PUMP.signal(true);

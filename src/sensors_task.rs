@@ -73,6 +73,8 @@ pub async fn sensor_task(
         moisture_power_pin.set_high();
         water_level_power_pin.set_high();
 
+        let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS);
+
         for i in 0..SENSOR_SAMPLE_COUNT {
             info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
 
@@ -115,6 +117,12 @@ pub async fn sensor_task(
             } else {
                 warn!("Error reading battery voltage");
             }
+        }
+
+        if battery_voltage_samples.is_empty() {
+            warn!("No battery voltage samples collected - skipping this cycle");
+            Timer::after(sampling_period).await;
+            return;
         }
 
         // Calculate the average of the samples
@@ -167,7 +175,6 @@ pub async fn sensor_task(
         moisture_power_pin.set_low();
         water_level_power_pin.set_low();
 
-        let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS);
         Timer::after(sampling_period).await;
     }
 }
