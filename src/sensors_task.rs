@@ -78,15 +78,19 @@ pub async fn sensor_task(
         for i in 0..SENSOR_SAMPLE_COUNT {
             info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
 
-            let dht11_pin = OutputOpenDrain::new(&mut p.dht11_digital_pin, Level::High, Pull::None);
-            let mut dht11_sensor: Dht11<OutputOpenDrain<'_>, Delay> = Dht11::new(dht11_pin, delay);
+            {
+                let dht11_pin =
+                    OutputOpenDrain::new(&mut p.dht11_digital_pin, Level::High, Pull::None);
+                let mut dht11_sensor: Dht11<OutputOpenDrain<'_>, Delay> =
+                    Dht11::new(dht11_pin, delay);
 
-            // DHT11 needs a longer initial delay
-            Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;
-            if let Ok(result) = dht11_sensor.read() {
-                air_temperature_samples.push(result.temperature);
-                air_humidity_samples.push(result.humidity);
-            }
+                // DHT11 needs a longer initial delay
+                Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;
+                if let Ok(result) = dht11_sensor.read() {
+                    air_temperature_samples.push(result.temperature);
+                    air_humidity_samples.push(result.humidity);
+                }
+            } // drop dht11_pin
 
             if let Some(result) = sample_adc(&mut adc2, &mut moisture_pin).await {
                 soil_moisture_samples.push(result);
@@ -174,6 +178,8 @@ pub async fn sensor_task(
         // Power off the sensors
         moisture_power_pin.set_low();
         water_level_power_pin.set_low();
+        // Force the pin into an explicit low-power state after the sensor is dropped
+        Output::new(&mut p.dht11_digital_pin, Level::Low);
 
         Timer::after(sampling_period).await;
     }
