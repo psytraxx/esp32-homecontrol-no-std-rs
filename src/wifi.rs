@@ -1,7 +1,7 @@
 use core::str::FromStr;
 use defmt::{error, info};
 use embassy_executor::Spawner;
-use embassy_net::{Stack, StackResources};
+use embassy_net::{Runner, Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use esp_hal::{
@@ -9,8 +9,7 @@ use esp_hal::{
     rng::Rng,
 };
 use esp_wifi::wifi::{
-    ClientConfiguration, Configuration, WifiController, WifiDevice, WifiError, WifiEvent,
-    WifiStaDevice, WifiState,
+    ClientConfiguration, Configuration, WifiController, WifiDevice, WifiError, WifiEvent, WifiState,
 };
 use heapless::String;
 use static_cell::StaticCell;
@@ -35,8 +34,9 @@ pub async fn connect_to_wifi(
     static INIT: StaticCell<esp_wifi::EspWifiController<'static>> = StaticCell::new();
     let init = INIT.init(esp_wifi::init(timer, rng, radio_clocks).unwrap());
 
-    let (wifi_interface, controller) =
-        esp_wifi::wifi::new_with_mode(init, wifi, WifiStaDevice).unwrap();
+    let (controller, interfaces) = esp_wifi::wifi::new(init, wifi).unwrap();
+
+    let wifi_interface = interfaces.sta;
 
     // initialize network stack
     let mut dhcp_config = embassy_net::DhcpConfig::default();
@@ -73,7 +73,7 @@ pub async fn connect_to_wifi(
 }
 
 #[embassy_executor::task]
-async fn net_task(mut runner: embassy_net::Runner<'static, WifiDevice<'static, WifiStaDevice>>) {
+async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
     runner.run().await
 }
 

@@ -9,7 +9,7 @@ use embedded_text::alignment::HorizontalAlignment;
 use embedded_text::style::{HeightMode, TextBoxStyleBuilder};
 use embedded_text::TextBox;
 use esp_hal::delay::Delay;
-use esp_hal::gpio::{GpioPin, Level, Output};
+use esp_hal::gpio::{GpioPin, Level, Output, OutputConfig};
 use mipidsi::interface::{Generic8BitBus, ParallelError, ParallelInterface};
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
@@ -68,25 +68,25 @@ pub struct DisplayPeripherals {
 
 impl Display<'_> {
     pub fn new(p: DisplayPeripherals) -> Result<Self, Error> {
-        let backlight = Output::new(p.backlight, Level::Low);
+        let backlight = Output::new(p.backlight, Level::Low, OutputConfig::default());
 
-        let dc = Output::new(p.dc, Level::Low);
-        let mut cs = Output::new(p.cs, Level::Low);
-        let rst = Output::new(p.rst, Level::Low);
-        let wr = Output::new(p.wr, Level::Low);
-        let mut rd = Output::new(p.rd, Level::Low);
+        let dc = Output::new(p.dc, Level::Low, OutputConfig::default());
+        let mut cs = Output::new(p.cs, Level::Low, OutputConfig::default());
+        let rst = Output::new(p.rst, Level::Low, OutputConfig::default());
+        let wr = Output::new(p.wr, Level::Low, OutputConfig::default());
+        let mut rd = Output::new(p.rd, Level::Low, OutputConfig::default());
 
         cs.set_low();
         rd.set_high();
 
-        let d0 = Output::new(p.d0, Level::Low);
-        let d1 = Output::new(p.d1, Level::Low);
-        let d2 = Output::new(p.d2, Level::Low);
-        let d3 = Output::new(p.d3, Level::Low);
-        let d4 = Output::new(p.d4, Level::Low);
-        let d5 = Output::new(p.d5, Level::Low);
-        let d6 = Output::new(p.d6, Level::Low);
-        let d7 = Output::new(p.d7, Level::Low);
+        let d0 = Output::new(p.d0, Level::Low, OutputConfig::default());
+        let d1 = Output::new(p.d1, Level::Low, OutputConfig::default());
+        let d2 = Output::new(p.d2, Level::Low, OutputConfig::default());
+        let d3 = Output::new(p.d3, Level::Low, OutputConfig::default());
+        let d4 = Output::new(p.d4, Level::Low, OutputConfig::default());
+        let d5 = Output::new(p.d5, Level::Low, OutputConfig::default());
+        let d6 = Output::new(p.d6, Level::Low, OutputConfig::default());
+        let d7 = Output::new(p.d7, Level::Low, OutputConfig::default());
 
         let bus = Generic8BitBus::new((d0, d1, d2, d3, d4, d5, d6, d7));
 
