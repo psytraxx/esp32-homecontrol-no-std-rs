@@ -8,8 +8,9 @@ use esp_hal::{
         RegisterAccess,
     },
     delay::Delay,
-    gpio::{GpioPin, Input, Level, Output, OutputOpenDrain, Pull},
+    gpio::{DriveMode, GpioPin, Input, InputConfig, Level, Output, OutputConfig, Pull},
     peripherals::{ADC1, ADC2},
+    Blocking,
 };
 
 use crate::{
@@ -55,10 +56,15 @@ pub async fn sensor_task(
         .enable_pin_with_cal::<GpioPin<4>, AdcCalLine<ADC1>>(p.battery_pin, Attenuation::_11dB);
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
-    let moisture_input_pin = Input::new(p.moisture_digital_pin, esp_hal::gpio::Pull::None);
+    let moisture_input_pin = Input::new(
+        p.moisture_digital_pin,
+        InputConfig::default().with_pull(Pull::None),
+    );
 
-    let mut moisture_power_pin = Output::new(p.moisture_power_pin, Level::Low);
-    let mut water_level_power_pin = Output::new(p.water_level_power_pin, Level::Low);
+    let mut moisture_power_pin =
+        Output::new(p.moisture_power_pin, Level::Low, OutputConfig::default());
+    let mut water_level_power_pin =
+        Output::new(p.water_level_power_pin, Level::Low, OutputConfig::default());
 
     loop {
         // Collect samples for each sensor type
@@ -79,10 +85,17 @@ pub async fn sensor_task(
             info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
 
             {
-                let dht11_pin =
-                    OutputOpenDrain::new(&mut p.dht11_digital_pin, Level::High, Pull::None);
-                let mut dht11_sensor: Dht11<OutputOpenDrain<'_>, Delay> =
-                    Dht11::new(dht11_pin, delay);
+                let mut dht11_pin = Output::new(
+                    &mut p.dht11_digital_pin,
+                    Level::High,
+                    OutputConfig::default()
+                        .with_drive_mode(DriveMode::OpenDrain)
+                        .with_pull(Pull::None),
+                )
+                .into_flex();
+                dht11_pin.enable_input(true);
+
+                let mut dht11_sensor = Dht11::new(dht11_pin, delay);
 
                 // DHT11 needs a longer initial delay
                 Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;
@@ -179,7 +192,11 @@ pub async fn sensor_task(
         moisture_power_pin.set_low();
         water_level_power_pin.set_low();
         // Force the pin into an explicit low-power state after the sensor is dropped
-        Output::new(&mut p.dht11_digital_pin, Level::Low);
+        Output::new(
+            &mut p.dht11_digital_pin,
+            Level::Low,
+            OutputConfig::default(),
+        );
 
         Timer::after(sampling_period).await;
     }
@@ -187,7 +204,7 @@ pub async fn sensor_task(
 
 /// Sample an ADC pin and return the value
 async fn sample_adc<PIN, ADCI, ADCC>(
-    adc: &mut Adc<'_, ADCI>,
+    adc: &mut Adc<'_, ADCI, Blocking>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
 ) -> Option<u16>
 where
