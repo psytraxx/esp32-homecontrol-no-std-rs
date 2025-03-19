@@ -40,7 +40,6 @@ pub async fn sensor_task(
     mut p: SensorPeripherals,
 ) {
     info!("Create");
-
     let mut adc2_config = AdcConfig::new();
     let mut moisture_pin = adc2_config
         .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.moisture_analog_pin, Attenuation::_11dB);
@@ -89,7 +88,7 @@ pub async fn sensor_task(
 
                 // DHT11 needs a longer initial delay
                 Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;
-                if let Ok(result) = dht11_sensor.read() {
+                if let Ok(result) = dht11_sensor.read().await {
                     air_temperature_samples
                         .push(result.temperature)
                         .expect("Too many samples");

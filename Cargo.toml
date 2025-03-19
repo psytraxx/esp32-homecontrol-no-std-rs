@@ -47,6 +47,7 @@ rust-mqtt = { version = "0.3.0", default-features = false, features = [
 embedded-text = "0.7.2"
 embedded-graphics = { version = "0.8.1", features = ["defmt"] }
 embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
+embedded-hal-async = { version = "1.0.0", features = ["defmt-03"] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.133", default-features = false, features = [
     "alloc",
