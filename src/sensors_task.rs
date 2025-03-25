@@ -8,7 +8,7 @@ use esp_hal::{
         RegisterAccess,
     },
     delay::Delay,
-    gpio::{DriveMode, GpioPin, Input, InputConfig, Level, Output, OutputConfig, Pull},
+    gpio::{DriveMode, GpioPin, Level, Output, OutputConfig, Pull},
     peripherals::{ADC1, ADC2},
     Blocking,
 };
@@ -16,7 +16,7 @@ use esp_hal::{
 use crate::{
     config::AWAKE_DURATION_SECONDS,
     dht11::Dht11,
-    domain::{Sensor, SensorData, WaterLevel},
+    domain::{MoistureLevel, Sensor, SensorData, WaterLevel},
 };
 
 const USB_CHARGING_VOLTAGE: u16 = 4200;
@@ -27,7 +27,6 @@ const SENSOR_SAMPLE_COUNT: usize = 5;
 pub struct SensorPeripherals {
     pub dht11_digital_pin: GpioPin<1>,
     pub battery_pin: GpioPin<4>,
-    pub moisture_digital_pin: GpioPin<10>,
     pub moisture_power_pin: GpioPin<16>,
     pub moisture_analog_pin: GpioPin<11>,
     pub water_level_analog_pin: GpioPin<12>,
@@ -56,11 +55,6 @@ pub async fn sensor_task(
         .enable_pin_with_cal::<GpioPin<4>, AdcCalLine<ADC1>>(p.battery_pin, Attenuation::_11dB);
     let mut adc1 = Adc::new(p.adc1, adc1_config);
 
-    let moisture_input_pin = Input::new(
-        p.moisture_digital_pin,
-        InputConfig::default().with_pull(Pull::None),
-    );
-
     let mut moisture_power_pin =
         Output::new(p.moisture_power_pin, Level::Low, OutputConfig::default());
     let mut water_level_power_pin =
@@ -71,7 +65,6 @@ pub async fn sensor_task(
         let mut air_humidity_samples: vec::Vec<u8> = vec![];
         let mut air_temperature_samples: vec::Vec<u8> = vec![];
         let mut soil_moisture_samples: vec::Vec<u16> = vec![];
-        let mut moisture_pin_sample_count: usize = 0;
         let mut battery_voltage_samples: vec::Vec<u16> = vec![];
         let mut water_level_samples: vec::Vec<u16> = vec![];
 
@@ -109,10 +102,6 @@ pub async fn sensor_task(
                 soil_moisture_samples.push(result);
             } else {
                 warn!("Error reading soil moisture sensor");
-            }
-
-            if moisture_input_pin.is_high() {
-                moisture_pin_sample_count += 1;
             }
 
             if let Some(value) = sample_adc(&mut adc2, &mut waterlevel_pin).await {
@@ -170,7 +159,14 @@ pub async fn sensor_task(
         if let Some(avg) = calculate_average(&mut soil_moisture_samples) {
             info!("Raw Moisture: {}", avg);
             sensor_data.data.push(Sensor::SoilMoistureRaw(avg));
+
             sensor_data.data.push(Sensor::SoilMoisture(avg.into()));
+
+            // Set pump trigger to true if majority of samples indicated it should be on
+            let moisture_level: MoistureLevel = avg.into();
+            sensor_data
+                .data
+                .push(Sensor::PumpTrigger(moisture_level == MoistureLevel::Dry));
         } else {
             warn!("Unable to generate average value of soil moisture");
         }
@@ -181,10 +177,6 @@ pub async fn sensor_task(
         } else {
             warn!("Error measuring battery voltage");
         }
-
-        // Set pump trigger to true if majority of samples indicated it should be on
-        let pump_trigger = moisture_pin_sample_count > SENSOR_SAMPLE_COUNT / 2;
-        sensor_data.data.push(Sensor::PumpTrigger(pump_trigger));
 
         sender.send(sensor_data).await;
 
