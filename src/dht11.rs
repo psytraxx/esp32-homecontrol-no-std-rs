@@ -1,10 +1,9 @@
-use embassy_time::{with_timeout, Duration, Instant};
 use embedded_hal::digital::{InputPin, OutputPin};
 use embedded_hal_async::delay::DelayNs;
 use embedded_hal_async::digital::Wait;
 
 /// How long to wait for a pulse on the data line (in microseconds).
-const TIMEOUT_US: u64 = 1_000;
+const TIMEOUT_US: u32 = 1_000;
 
 /// Error type for this crate.
 #[derive(Debug)]
@@ -50,10 +49,8 @@ where
     /// Performs a reading of the sensor.
     pub async fn read(&mut self) -> Result<Measurement, Error<E>> {
         let mut data = [0u8; 5];
-
         // Perform initial handshake
         self.perform_handshake().await?;
-
         // Read bits
         for i in 0..40 {
             data[i / 8] <<= 1;
@@ -61,7 +58,7 @@ where
                 data[i / 8] |= 1;
             }
         }
-
+        // Read bits
         // Finally wait for line to go idle again.
         self.wait_for_pulse(true).await?;
 
@@ -95,7 +92,6 @@ where
 
         // As a response, the device pulls the line low for 80us and then high for 80us.
         self.read_bit().await?;
-
         Ok(())
     }
 
@@ -105,25 +101,17 @@ where
         Ok(high > low)
     }
 
-    async fn wait_for_pulse(&mut self, level: bool) -> Result<u64, Error<E>> {
-        let timeout_duration = Duration::from_micros(TIMEOUT_US);
-        let start = Instant::now();
+    async fn wait_for_pulse(&mut self, level: bool) -> Result<u32, Error<E>> {
+        let mut count = 0_u32;
 
-        let wait_future = async {
-            if level {
-                self.gpio.wait_for_rising_edge().await.map_err(Error::Gpio)
-            } else {
-                self.gpio.wait_for_falling_edge().await.map_err(Error::Gpio)
+        while self.gpio.is_high().map_err(Error::Gpio)? != level {
+            count += 1;
+            if count > TIMEOUT_US {
+                return Err(Error::Timeout);
             }
-        };
+            self.delay.delay_us(1).await;
+        }
 
-        // Wait for the pulse with timeout.
-        with_timeout(timeout_duration, wait_future)
-            .await
-            .map_err(|_| Error::Timeout)??;
-        let elapsed = Instant::now() - start;
-
-        // Using microseconds for finer measurement.
-        Ok(elapsed.as_micros())
+        Ok(count)
     }
 }
