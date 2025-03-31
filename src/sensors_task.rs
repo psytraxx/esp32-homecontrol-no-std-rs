@@ -130,12 +130,6 @@ pub async fn sensor_task(
             }
         }
 
-        if battery_voltage_samples.is_empty() {
-            warn!("No battery voltage samples collected - skipping this cycle");
-            Timer::after(sampling_period).await;
-            return;
-        }
-
         // Calculate the average of the samples
         let mut sensor_data = SensorData::default();
 
@@ -202,7 +196,14 @@ pub async fn sensor_task(
             warn!("Error measuring battery voltage");
         }
 
-        sender.send(sensor_data).await;
+        if battery_voltage_samples.is_empty() {
+            warn!(
+                "No battery voltage samples collected - skipping this cycle {}",
+                defmt::Display2Format(&sensor_data)
+            );
+        } else {
+            sender.send(sensor_data).await;
+        }
 
         // Power off the sensors
         moisture_power_pin.set_low();
