@@ -5,10 +5,10 @@ use embedded_graphics::mono_font::iso_8859_1::FONT_10X20 as FONT;
 use embedded_graphics::mono_font::MonoTextStyle;
 use embedded_graphics::pixelcolor::{Rgb565, RgbColor};
 use embedded_graphics::Drawable;
+use embedded_hal::delay::DelayNs;
 use embedded_text::alignment::HorizontalAlignment;
 use embedded_text::style::{HeightMode, TextBoxStyleBuilder};
 use embedded_text::TextBox;
-use esp_hal::delay::Delay;
 use esp_hal::gpio::{GpioPin, Level, Output, OutputConfig};
 use mipidsi::interface::{Generic8BitBus, ParallelError, ParallelInterface};
 use mipidsi::models::ST7789;
@@ -38,10 +38,10 @@ type MipiDisplayWrapper<'a> = MipiDisplay<
     Output<'a>,
 >;
 
-pub struct Display<'a> {
+pub struct Display<'a, D: DelayNs> {
     display: MipiDisplayWrapper<'a>,
     backlight: Output<'a>,
-    delay: Delay,
+    delay: D,
 }
 
 pub trait DisplayTrait {
@@ -66,8 +66,8 @@ pub struct DisplayPeripherals {
     pub d7: GpioPin<48>,
 }
 
-impl Display<'_> {
-    pub fn new(p: DisplayPeripherals) -> Result<Self, Error> {
+impl<D: DelayNs> Display<'_, D> {
+    pub fn new(p: DisplayPeripherals, mut delay: D) -> Result<Self, Error> {
         let backlight = Output::new(p.backlight, Level::Low, OutputConfig::default());
 
         let dc = Output::new(p.dc, Level::Low, OutputConfig::default());
@@ -91,8 +91,6 @@ impl Display<'_> {
         let bus = Generic8BitBus::new((d0, d1, d2, d3, d4, d5, d6, d7));
 
         let di = ParallelInterface::new(bus, dc, wr);
-
-        let mut delay = Delay::new();
 
         let display = Builder::new(mipidsi::models::ST7789, di)
             .display_size(DISPLAY_HEIGHT, DISPLAY_WIDTH)
@@ -118,7 +116,7 @@ impl Display<'_> {
     }
 }
 
-impl DisplayTrait for Display<'_> {
+impl<D: DelayNs> DisplayTrait for Display<'_, D> {
     fn write_multiline(&mut self, text: &str) -> Result<(), Error> {
         self.disable_powersave()?;
         let textbox_style = TextBoxStyleBuilder::new()
