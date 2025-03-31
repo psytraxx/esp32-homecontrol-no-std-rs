@@ -1,10 +1,7 @@
-use alloc::{
-    format,
-    string::{String, ToString},
-    vec::Vec,
-};
+use alloc::string::{String, ToString};
 use core::fmt::{Display, Formatter, Result};
 use defmt::Format;
+use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
@@ -20,7 +17,7 @@ const MOISTURE_DRY_THRESHOLD: f32 = 0.15;
 /// Struct to hold sensor data
 #[derive(Default, Debug)]
 pub struct SensorData {
-    pub data: Vec<Sensor>,
+    pub data: Vec<Sensor, 7>,
 }
 
 impl Display for SensorData {
@@ -51,7 +48,7 @@ impl Display for MoistureLevel {
 
 impl From<u16> for MoistureLevel {
     fn from(value: u16) -> Self {
-        let clamped = value.clamp(MOISTURE_MIN, MOISTURE_MAX);
+        let clamped = clamp_soil_moisture(value);
 
         let value = (MOISTURE_MAX - clamped) as f32 / (MOISTURE_MAX - MOISTURE_MIN) as f32;
 
@@ -96,8 +93,23 @@ pub enum Sensor {
     AirHumidity(u8),
     SoilMoisture(MoistureLevel),
     BatteryVoltage(u16),
-    SoilMoistureRaw(u16),
+    SoilMoistureRaw(SoilMoistureRawLevel),
     PumpTrigger(bool),
+}
+
+#[derive(Debug)]
+pub struct SoilMoistureRawLevel(u16);
+
+impl From<u16> for SoilMoistureRawLevel {
+    fn from(value: u16) -> Self {
+        Self(clamp_soil_moisture(value))
+    }
+}
+
+impl Display for SoilMoistureRawLevel {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.0)
+    }
 }
 
 impl Sensor {
@@ -156,7 +168,7 @@ impl Sensor {
             Sensor::AirTemperature(v) => v.to_string(),
             Sensor::AirHumidity(v) => v.to_string(),
             Sensor::SoilMoisture(v) => v.to_string(),
-            Sensor::WaterLevel(v) => format!("{}", v),
+            Sensor::WaterLevel(v) => v.to_string(),
             Sensor::BatteryVoltage(v) => v.to_string(),
             Sensor::SoilMoistureRaw(v) => v.to_string(),
             Sensor::PumpTrigger(v) => v.to_string(),
@@ -169,4 +181,8 @@ impl Display for Sensor {
         let unit = self.unit().unwrap_or_default();
         write!(f, "{}: {}{}", self.name(), self.value(), unit)
     }
+}
+
+fn clamp_soil_moisture(value: u16) -> u16 {
+    value.clamp(MOISTURE_MIN, MOISTURE_MAX)
 }

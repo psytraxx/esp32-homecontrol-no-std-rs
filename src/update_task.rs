@@ -11,7 +11,7 @@ use embassy_net::{
     Stack,
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
-use embassy_time::{Duration, Timer};
+use embassy_time::{Delay, Duration, Timer};
 use rust_mqtt::{
     client::{
         client::MqttClient,
@@ -48,7 +48,7 @@ static RESOURCES: StaticCell<MqttResources> = StaticCell::new();
 #[embassy_executor::task]
 pub async fn update_task(
     stack: Stack<'static>,
-    mut display: Display<'static>,
+    mut display: Display<'static, Delay>,
     receiver: Receiver<'static, NoopRawMutex, SensorData, 3>,
 ) {
     let resources = MqttResources {
@@ -144,7 +144,7 @@ async fn initialize_mqtt_client<'a>(
 
 async fn handle_sensor_data(
     client: &mut MqttClientImpl<'_>,
-    display: &mut Display<'static>,
+    display: &mut Display<'static, Delay>,
     sensor_data: SensorData,
 ) -> Result<(), Error> {
     let discovery_messages_sent = unsafe { DISCOVERY_MESSAGES_SENT };
