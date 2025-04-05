@@ -171,12 +171,15 @@ pub async fn sensor_task(
             warn!("Unable to generate average value of soil moisture");
         }
 
-        if let Some(avg) = calculate_average(&mut battery_voltage_samples) {
-            info!("Battery voltage: {}mV", avg);
-            sensor_data.data.push(Sensor::BatteryVoltage(avg));
-        } else {
-            warn!("Error measuring battery voltage");
+        if let Some(avg_battery_voltage) = calculate_average(&mut battery_voltage_samples) {
+            info!("Battery voltage: {}mV", avg_battery_voltage);
+            sensor_data
+                .data
+                .push(Sensor::BatteryVoltage(avg_battery_voltage));
         }
+
+        // no battery samples - no publish!
+        sensor_data.publish = !battery_voltage_samples.is_empty();
 
         sender.send(sensor_data).await;
 

@@ -3,7 +3,7 @@ use alloc::{
     string::{String, ToString},
 };
 use core::{num::ParseIntError, str};
-use defmt::{error, info};
+use defmt::{error, info, warn};
 use embassy_futures::select::{select, Either};
 use embassy_net::{
     dns::{DnsQueryType, Error as DnsError},
@@ -147,6 +147,20 @@ async fn handle_sensor_data(
     display: &mut Display<'static>,
     sensor_data: SensorData,
 ) -> Result<(), Error> {
+    if sensor_data.publish {
+        process_mqtt(client, &sensor_data).await?;
+    } else {
+        warn!("skipping publishing to MQTT");
+    }
+
+    process_display(display, &sensor_data).await?;
+    Ok(())
+}
+
+async fn process_mqtt(
+    client: &mut MqttClientImpl<'_>,
+    sensor_data: &SensorData,
+) -> Result<(), Error> {
     let discovery_messages_sent = unsafe { DISCOVERY_MESSAGES_SENT };
     if !discovery_messages_sent {
         info!("First run, sending discovery messages");
@@ -179,14 +193,12 @@ async fn handle_sensor_data(
         info!("Discovery messages already sent");
     }
 
-    // act on sensor data - turn pump on/off
+    // Act on sensor data - turn pump on/off
     sensor_data.data.iter().for_each(|entry| {
         if let Sensor::WaterLevel(WaterLevel::Full) = entry {
-            // Water level is full, stop the pump in any case if it's running
             info!("Water level is full, stopping pump");
             ENABLE_PUMP.signal(false);
         } else if let Sensor::PumpTrigger(enabled) = entry {
-            // Pump trigger is enabled, start the pump
             if *enabled {
                 info!("Soil moisture is low, starting pump");
                 ENABLE_PUMP.signal(true);
@@ -199,7 +211,6 @@ async fn handle_sensor_data(
         let value = s.value();
         let message = json!({ "value": value }).to_string();
         let topic_name = format!("{}/{}", DEVICE_ID, key);
-
         info!(
             "Publishing to topic {}, message: {}",
             topic_name.as_str(),
@@ -215,8 +226,6 @@ async fn handle_sensor_data(
             )
             .await?;
     }
-
-    display.write_multiline(&format!("{}", sensor_data))?;
 
     let pump_topic = format!("{}/pump/state", DEVICE_ID);
     let message = "OFF";
@@ -234,11 +243,16 @@ async fn handle_sensor_data(
             false,
         )
         .await?;
+    Ok(())
+}
 
+async fn process_display(
+    display: &mut Display<'static>,
+    sensor_data: &SensorData,
+) -> Result<(), Error> {
+    display.write_multiline(&format!("{}", sensor_data))?;
     Timer::after(Duration::from_secs(AWAKE_DURATION_SECONDS)).await;
-
     display.enable_powersave()?;
-
     Ok(())
 }
 
