@@ -12,7 +12,7 @@ use embassy_sync::{
     channel::Channel,
     signal::Signal,
 };
-use embassy_time::{Duration, Timer};
+use embassy_time::{Delay, Duration, Timer};
 use esp_alloc::heap_allocator;
 use esp_hal::{
     clock::CpuClock,
@@ -109,7 +109,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
         d7: peripherals.GPIO48,
     };
 
-    let mut display = Display::new(display_peripherals)?;
+    let mut display = Display::new(display_peripherals, Delay)?;
 
     if let Some(stack_config) = stack.config_v4() {
         display.write_multiline(
