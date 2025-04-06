@@ -15,9 +15,9 @@ use embassy_sync::{
 use embassy_time::{Delay, Duration, Timer};
 use esp_alloc::heap_allocator;
 use esp_hal::{
-    clock::CpuClock,
     gpio::{Level, Output, OutputConfig},
     ram,
+    system::software_reset,
     timer::timg::TimerGroup,
 };
 use esp_hal_embassy::main;
@@ -66,15 +66,12 @@ async fn main(spawner: Spawner) {
 
     if let Err(error) = main_fallible(spawner, boot_count).await {
         error!("Error while running firmware: {}", error);
+        software_reset()
     }
 }
 
 async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
-    let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::_160MHz));
-
-    // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
-    let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
-    power_pin.set_high();
+    let peripherals = esp_hal::init(esp_hal::Config::default());
 
     heap_allocator!(size: 72 * 1024);
 
@@ -82,6 +79,10 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let timg1 = TimerGroup::new(peripherals.TIMG1);
 
     esp_hal_embassy::init(timg0.timer0);
+
+    // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
+    let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
+    power_pin.set_high();
 
     let stack = connect_to_wifi(
         peripherals.WIFI,

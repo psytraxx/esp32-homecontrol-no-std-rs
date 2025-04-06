@@ -184,12 +184,12 @@ async fn handle_sensor_data(
         if let Sensor::WaterLevel(WaterLevel::Full) = entry {
             // Water level is full, stop the pump in any case if it's running
             info!("Water level is full, stopping pump");
-            ENABLE_PUMP.signal(false);
+            update_pump_state(false);
         } else if let Sensor::PumpTrigger(enabled) = entry {
             // Pump trigger is enabled, start the pump
             if *enabled {
                 info!("Soil moisture is low, starting pump");
-                ENABLE_PUMP.signal(true);
+                update_pump_state(true);
             }
         }
     });
@@ -249,10 +249,18 @@ fn handle_mqtt_message(topic: &str, data: &[u8]) {
         info!("Received message: {} on topic {}", msg, topic);
         let state = message == "ON";
         info!("Pump state: {}", state);
-        ENABLE_PUMP.signal(state);
+        update_pump_state(state);
     } else {
         info!("Invalid message received on topic {}", topic);
     }
+}
+
+pub fn update_pump_state(state: bool) {
+    // Use a scoped block so that the signal operation (which may internally acquire a mutex)
+    // does not accidentally span long-running operations.
+    {
+        ENABLE_PUMP.signal(state);
+    } // Critical section ends here immediately.
 }
 
 /// Get the MQTT discovery message for a sensor
