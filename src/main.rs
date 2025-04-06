@@ -3,7 +3,6 @@
 
 use alloc::format;
 use config::{AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS};
-use defmt::{error, info};
 use display::{Display, DisplayPeripherals, DisplayTrait};
 use domain::SensorData;
 use embassy_executor::Spawner;
@@ -14,6 +13,7 @@ use embassy_sync::{
 };
 use embassy_time::{Delay, Duration, Timer};
 use esp_alloc::heap_allocator;
+use esp_backtrace as _;
 use esp_hal::{
     gpio::{Level, Output, OutputConfig},
     ram,
@@ -21,6 +21,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_hal_embassy::main;
+use esp_println::println;
 use esp_wifi::wifi::WifiError;
 use relay_task::relay_task;
 use sensors_task::{sensor_task, SensorPeripherals};
@@ -28,7 +29,6 @@ use sleep::enter_deep;
 use static_cell::StaticCell;
 use update_task::update_task;
 use wifi::{connect_to_wifi, STOP_WIFI_SIGNAL};
-use {defmt_rtt as _, esp_backtrace as _};
 
 extern crate alloc;
 
@@ -59,13 +59,13 @@ static mut DISCOVERY_MESSAGES_SENT: bool = false;
 #[main]
 async fn main(spawner: Spawner) {
     let boot_count = unsafe { BOOT_COUNT };
-    info!("Current boot count = {}", &boot_count);
+    println!("Current boot count = {}", &boot_count);
     unsafe {
         BOOT_COUNT = boot_count + 1;
     }
 
     if let Err(error) = main_fallible(spawner, boot_count).await {
-        error!("Error while running firmware: {}", error);
+        println!("Error while running firmware: {:?}", error);
         software_reset()
     }
 }
@@ -121,10 +121,10 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
             .as_str(),
         )?;
     } else {
-        error!("Failed to get stack config");
+        println!("Failed to get stack config");
     }
 
-    info!("Create channel");
+    println!("Create channel");
     let channel: &'static mut _ = CHANNEL.init(Channel::new());
     let receiver = channel.receiver();
     let sender = channel.sender();
@@ -149,24 +149,33 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
 
     let awake_duration = Duration::from_secs(AWAKE_DURATION_SECONDS);
 
-    info!("Stay awake for {}s", awake_duration.as_secs());
+    println!("Stay awake for {}s", awake_duration.as_secs());
     Timer::after(awake_duration).await;
-    info!("Request to disconnect wifi");
+    println!("Request to disconnect wifi");
     STOP_WIFI_SIGNAL.signal(());
 
     // set power pin to low to save power
     power_pin.set_low();
 
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
-    info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
+    println!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
     let mut wake_up_btn_pin = peripherals.GPIO14;
     enter_deep(&mut wake_up_btn_pin, peripherals.LPWR, deep_sleep_duration);
 }
 
-#[derive(Debug, defmt::Format)]
+#[derive(Debug)]
 enum Error {
     Wifi(WifiError),
     Display(display::Error),
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Wifi(error) => write!(f, "Wifi error: {:?}", error),
+            Error::Display(error) => write!(f, "Display error: {}", error),
+        }
+    }
 }
 
 impl From<WifiError> for Error {

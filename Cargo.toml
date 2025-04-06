@@ -8,16 +8,15 @@ esp-backtrace = { version = "0.15.0", features = [
     "esp32s3",
     "exception-handler",
     "panic-handler",
-    "defmt",
+    "println",
 ] }
-esp-hal = { version = "1.0.0-beta.0", features = ["esp32s3", "defmt", "unstable"] }
+esp-hal = { version = "1.0.0-beta.0", features = ["esp32s3", "unstable"] }
 esp-alloc = { version = "0.7.0" }
 embassy-net = { version = "0.6.0", features = [
     "tcp",
     "udp",
     "dns",
     "dhcpv4",
-    "defmt",
     "dhcpv4-hostname",
 ] }
 
@@ -26,31 +25,26 @@ esp-wifi = { version = "0.13.0", features = [
     "esp32s3",
     "serde",
     "wifi",
-    "defmt",
+    "log",
 ] }
 heapless = { version = "0.8.0", default-features = false }
-defmt = "0.3.8"
-defmt-rtt = "0.4.1"
-embassy-executor = { version = "0.7.0", features = [
-    "task-arena-size-163840",
-    "defmt",
-] }
-embassy-time = { version = "0.4.0", features = ["defmt"] }
-esp-hal-embassy = { version = "0.7.0", features = ["esp32s3", "defmt"] }
-rust-mqtt = { version = "0.3.0", default-features = false, features = [
-    "defmt",
-] }
+esp-println = { version = "0.13.1", features = ["log", "esp32s3"] }
+embassy-executor = { version = "0.7.0", features = ["task-arena-size-163840"] }
+embassy-time = { version = "0.4.0", features = [] }
+esp-hal-embassy = { version = "0.7.0", features = ["esp32s3"] }
+rust-mqtt = { version = "0.3.0", default-features = false, features = [] }
 embedded-text = "0.7.2"
-embedded-graphics = { version = "0.8.1", features = ["defmt"] }
-embedded-hal = { version = "1.0.0", features = ["defmt-03"] }
+embedded-graphics = { version = "0.8.1", features = [] }
+embedded-hal = { version = "1.0.0", features = [] }
 serde = { version = "1.0.215", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.133", default-features = false, features = [
     "alloc",
 ] }
-embassy-futures = { version = "0.1.1", features = ["defmt"] }
-embassy-sync = { version = "0.6.0", features = ["defmt"] }
+embassy-futures = { version = "0.1.1", features = [] }
+embassy-sync = { version = "0.6.0", features = [] }
 static_cell = "2.1.0"
-nb = { version = "1.1.0", features = ["defmt-0-3"] }
+nb = { version = "1.1.0", features = [] }
+
 
 [profile.dev]
 # Rust debug is too slow.

@@ -1,4 +1,3 @@
-use defmt::Format;
 use embedded_graphics::draw_target::DrawTarget;
 use embedded_graphics::geometry::Dimensions;
 use embedded_graphics::mono_font::iso_8859_1::FONT_10X20 as FONT;
@@ -150,11 +149,11 @@ pub enum Error {
     InitError,
 }
 
-impl Format for Error {
-    fn format(&self, f: defmt::Formatter) {
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::DisplayInterface(e) => defmt::write!(f, "Display error {}", e),
-            Error::InitError => defmt::write!(f, "Init error"),
+            Error::DisplayInterface(msg) => write!(f, "Display interface error: {}", msg),
+            Error::InitError => write!(f, "Display initialization error"),
         }
     }
 }

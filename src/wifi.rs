@@ -1,5 +1,4 @@
 use core::str::FromStr;
-use defmt::{error, info};
 use embassy_executor::Spawner;
 use embassy_net::{Runner, Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
@@ -8,6 +7,7 @@ use esp_hal::{
     peripherals::{self, RNG},
     rng::Rng,
 };
+use esp_println::println;
 use esp_wifi::wifi::{
     ClientConfiguration, Configuration, WifiController, WifiDevice, WifiError, WifiEvent, WifiState,
 };
@@ -45,14 +45,14 @@ pub async fn connect_to_wifi(
     let seed = rng.random();
     let config = embassy_net::Config::dhcpv4(dhcp_config);
 
-    info!("Initialize network stack");
+    println!("Initialize network stack");
     let stack_resources: &'static mut _ = STACK_RESOURCES.init(StackResources::new());
     let (stack, runner) = embassy_net::new(wifi_interface, config, stack_resources, seed.into());
 
     spawner.spawn(connection(controller)).ok();
     spawner.spawn(net_task(runner)).ok();
 
-    info!("Wait for network link");
+    println!("Wait for network link");
     loop {
         if stack.is_link_up() {
             break;
@@ -60,10 +60,10 @@ pub async fn connect_to_wifi(
         Timer::after(Duration::from_millis(500)).await;
     }
 
-    info!("Wait for IP address");
+    println!("Wait for IP address");
     loop {
         if let Some(config) = stack.config_v4() {
-            info!("Connected to WiFi with IP address {}", config.address);
+            println!("Connected to WiFi with IP address {}", config.address);
             break;
         }
         Timer::after(Duration::from_millis(500)).await;
@@ -83,15 +83,15 @@ async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
 #[embassy_executor::task]
 async fn connection(controller: WifiController<'static>) {
     if let Err(error) = connection_fallible(controller).await {
-        error!("Cannot connect to WiFi: {}", error);
+        println!("Cannot connect to WiFi: {:?}", error);
     }
 }
 
 async fn connection_fallible(mut controller: WifiController<'static>) -> Result<(), WifiError> {
-    info!("Start connection task, device capabilities:");
+    println!("Start connection task, device capabilities:");
     let caps = controller.capabilities().unwrap();
     caps.iter().for_each(|o| {
-        info!("{}", o);
+        println!("{:?}", o);
     });
 
     loop {
@@ -104,34 +104,34 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
         if !matches!(controller.is_started(), Ok(true)) {
             let ssid = env!("WIFI_SSID").try_into().unwrap();
             let password = env!("WIFI_PSK").try_into().unwrap();
-            info!("Connecting to wifi with SSID: {}", ssid);
+            println!("Connecting to wifi with SSID: {}", ssid);
             let client_config = Configuration::Client(ClientConfiguration {
                 ssid,
                 password,
                 ..Default::default()
             });
             controller.set_configuration(&client_config)?;
-            info!("Starting WiFi controller");
+            println!("Starting WiFi controller");
             controller.start_async().await?;
-            info!("WiFi controller started");
+            println!("WiFi controller started");
         }
 
-        info!("About to connect to {}...", env!("WIFI_SSID"));
+        println!("About to connect to {}...", env!("WIFI_SSID"));
         match controller.connect_async().await {
             Ok(()) => {
-                info!("Connected to WiFi network");
-                info!("Wait for request to stop wifi");
+                println!("Connected to WiFi network");
+                println!("Wait for request to stop wifi");
                 STOP_WIFI_SIGNAL.wait().await;
-                info!("Received signal to stop wifi");
+                println!("Received signal to stop wifi");
                 controller.stop_async().await?;
                 break;
             }
             Err(error) => {
-                error!("Failed to connect to WiFi network: {}", error);
+                println!("Failed to connect to WiFi network: {:?}", error);
                 Timer::after(Duration::from_millis(5000)).await;
             }
         }
     }
-    info!("Leave connection task");
+    println!("Leave connection task");
     Ok(())
 }
