@@ -204,14 +204,7 @@ pub async fn sensor_task(
         // no battery samples - no publish!
         sensor_data.publish = !battery_voltage_samples.is_empty();
 
-        if battery_voltage_samples.is_empty() {
-            println!(
-                "No battery voltage samples collected - skipping this cycle {:?}",
-                &sensor_data
-            );
-        } else {
-            sender.send(sensor_data).await;
-        }
+        sender.send(sensor_data).await;
 
         // Power off the sensors
         moisture_power_pin.set_low();
