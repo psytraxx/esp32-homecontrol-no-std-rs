@@ -17,6 +17,7 @@ const MOISTURE_DRY_THRESHOLD: f32 = 0.15;
 #[derive(Default, Debug)]
 pub struct SensorData {
     pub data: Vec<Sensor, 7>,
+    pub publish: bool,
 }
 
 impl Display for SensorData {

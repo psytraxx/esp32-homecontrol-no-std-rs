@@ -199,9 +199,10 @@ pub async fn sensor_task(
                 .data
                 .push(Sensor::BatteryVoltage(avg_battery_voltage))
                 .expect("Too many samples");
-        } else {
-            println!("Error measuring battery voltage");
         }
+
+        // no battery samples - no publish!
+        sensor_data.publish = !battery_voltage_samples.is_empty();
 
         if battery_voltage_samples.is_empty() {
             println!(
