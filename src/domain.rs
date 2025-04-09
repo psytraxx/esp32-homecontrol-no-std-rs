@@ -1,6 +1,5 @@
 use alloc::string::{String, ToString};
 use core::fmt::{Display, Formatter, Result};
-use defmt::Format;
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +28,7 @@ impl Display for SensorData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Format, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub enum MoistureLevel {
     Wet,
     Moist,
@@ -60,7 +59,7 @@ impl From<u16> for MoistureLevel {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Format)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum WaterLevel {
     Full,
     Empty,

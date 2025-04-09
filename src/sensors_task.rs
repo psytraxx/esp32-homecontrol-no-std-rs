@@ -1,4 +1,3 @@
-use defmt::{error, info, warn};
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
 use embassy_time::{Delay, Duration, Timer};
 use esp_hal::{
@@ -10,6 +9,7 @@ use esp_hal::{
     peripherals::{ADC1, ADC2},
     Blocking,
 };
+use esp_println::println;
 use heapless::Vec;
 
 use crate::{
@@ -21,7 +21,8 @@ use crate::{
 const USB_CHARGING_VOLTAGE: u16 = 4200;
 const DHT11_WARMUP_DELAY_MILLISECONDS: u64 = 2000;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
-const SENSOR_SAMPLE_COUNT: usize = 6;
+// in this case we keep 3 samples for averaging - first and last are ignored
+const SENSOR_SAMPLE_COUNT: usize = 5;
 
 pub struct SensorPeripherals {
     pub dht11_digital_pin: GpioPin<1>,
@@ -39,7 +40,7 @@ pub async fn sensor_task(
     sender: Sender<'static, NoopRawMutex, SensorData, 3>,
     mut p: SensorPeripherals,
 ) {
-    info!("Create");
+    println!("Create");
 
     let mut adc2_config = AdcConfig::new();
     let mut moisture_pin = adc2_config
@@ -72,7 +73,7 @@ pub async fn sensor_task(
         let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS);
 
         for i in 0..SENSOR_SAMPLE_COUNT {
-            info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
+            println!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
 
             {
                 let mut dht11_pin = Output::new(
@@ -104,13 +105,13 @@ pub async fn sensor_task(
                     .push(result)
                     .expect("Too many samples");
             } else {
-                warn!("Error reading soil moisture sensor");
+                println!("Error reading soil moisture sensor");
             }
 
             if let Some(value) = sample_adc(&mut adc2, &mut waterlevel_pin).await {
                 water_level_samples.push(value).expect("Too many samples");
             } else {
-                warn!("Error reading water level sensor");
+                println!("Error reading water level sensor");
             }
 
             if let Some(value) = sample_adc(&mut adc1, &mut battery_pin).await {
@@ -120,13 +121,13 @@ pub async fn sensor_task(
                         .push(value)
                         .expect("Too many samples");
                 } else {
-                    warn!(
+                    println!(
                         "Battery voltage too high - looks we are charging on USB: {}mV",
                         value
                     );
                 }
             } else {
-                warn!("Error reading battery voltage");
+                println!("Error reading battery voltage");
             }
         }
 
@@ -134,26 +135,26 @@ pub async fn sensor_task(
         let mut sensor_data = SensorData::default();
 
         if let Some(avg_air_humidity) = calculate_average(&mut air_humidity_samples) {
-            info!("Air humidity: {}%", avg_air_humidity);
+            println!("Air humidity: {}%", avg_air_humidity);
             sensor_data
                 .data
                 .push(Sensor::AirHumidity(avg_air_humidity))
                 .expect("Too many samples");
         } else {
-            warn!(
+            println!(
                 "Unable to generate average value of air humidity - we had {} samples",
                 air_humidity_samples.len()
             );
         }
 
         if let Some(avg_air_temperature) = calculate_average(&mut air_temperature_samples) {
-            info!("Air temperature: {}°C", avg_air_temperature);
+            println!("Air temperature: {}°C", avg_air_temperature);
             sensor_data
                 .data
                 .push(Sensor::AirTemperature(avg_air_temperature))
                 .expect("Too many samples");
         } else {
-            warn!(
+            println!(
                 "Unable to generate average value of air temperature, we had {} samples",
                 air_temperature_samples.len()
             );
@@ -161,17 +162,17 @@ pub async fn sensor_task(
 
         if let Some(avg_water_level) = calculate_average(&mut water_level_samples) {
             let waterlevel: WaterLevel = avg_water_level.into();
-            info!("Water level: {}", waterlevel);
+            println!("Water level: {}", waterlevel);
             sensor_data
                 .data
                 .push(Sensor::WaterLevel(avg_water_level.into()))
                 .expect("Too many samples");
         } else {
-            warn!("Unable to generate average value of water level");
+            println!("Unable to generate average value of water level");
         }
 
         if let Some(avg_soil_moisture) = calculate_average(&mut soil_moisture_samples) {
-            info!("Raw Moisture: {}", avg_soil_moisture);
+            println!("Raw Moisture: {}", avg_soil_moisture);
             sensor_data
                 .data
                 .push(Sensor::SoilMoistureRaw(avg_soil_moisture.into()))
@@ -189,23 +190,23 @@ pub async fn sensor_task(
                 .push(Sensor::PumpTrigger(moisture_level == MoistureLevel::Dry))
                 .expect("Too many samples");
         } else {
-            warn!("Unable to generate average value of soil moisture");
+            println!("Unable to generate average value of soil moisture");
         }
 
         if let Some(avg_battery_voltage) = calculate_average(&mut battery_voltage_samples) {
-            info!("Battery voltage: {}mV", avg_battery_voltage);
+            println!("Battery voltage: {}mV", avg_battery_voltage);
             sensor_data
                 .data
                 .push(Sensor::BatteryVoltage(avg_battery_voltage))
                 .expect("Too many samples");
         } else {
-            warn!("Error measuring battery voltage");
+            println!("Error measuring battery voltage");
         }
 
         if battery_voltage_samples.is_empty() {
-            warn!(
-                "No battery voltage samples collected - skipping this cycle {}",
-                defmt::Display2Format(&sensor_data)
+            println!(
+                "No battery voltage samples collected - skipping this cycle {:?}",
+                &sensor_data
             );
         } else {
             sender.send(sensor_data).await;
@@ -240,7 +241,7 @@ where
     match nb::block!(adc.read_oneshot(pin)) {
         Ok(value) => Some(value),
         Err(e) => {
-            error!("Error reading sensor: {}", defmt::Debug2Format(&e));
+            println!("Error reading sensor: {:?}", &e);
             None
         }
     }

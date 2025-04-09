@@ -3,7 +3,6 @@ use alloc::{
     string::{String, ToString},
 };
 use core::{num::ParseIntError, str};
-use defmt::{error, info};
 use embassy_futures::select::{select, Either};
 use embassy_net::{
     dns::{DnsQueryType, Error as DnsError},
@@ -12,6 +11,7 @@ use embassy_net::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
 use embassy_time::{Delay, Duration, Timer};
+use esp_println::println;
 use rust_mqtt::{
     client::{
         client::MqttClient,
@@ -64,7 +64,7 @@ pub async fn update_task(
         let mut client = match initialize_mqtt_client(stack, resources).await {
             Ok(client) => client,
             Err(e) => {
-                error!("Error initializing MQTT client: {}", e);
+                println!("Error initializing MQTT client: {:?}", e);
                 continue;
             }
         };
@@ -73,16 +73,16 @@ pub async fn update_task(
             .subscribe_to_topic("esp32_breadboard/pump/command")
             .await
         {
-            error!("Error subscribing to pump command topic: {}", e);
+            println!("Error subscribing to pump command topic: {}", e);
             continue;
         }
 
-        info!("Subscribed to pump command topic");
+        println!("Subscribed to pump command topic");
 
         match select(receiver.receive(), client.receive_message()).await {
             Either::First(sensor_data) => {
                 if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await {
-                    error!("Error handling sensor data: {}", e);
+                    println!("Error handling sensor data: {:?}", e);
                     continue;
                 }
             }
@@ -91,7 +91,7 @@ pub async fn update_task(
                     handle_mqtt_message(topic, data);
                 }
                 Err(e) => {
-                    error!("Error handling MQTT message: {}", e);
+                    println!("Error handling MQTT message: {}", e);
                     continue;
                 }
             },
@@ -115,11 +115,11 @@ async fn initialize_mqtt_client<'a>(
     let port = env!("MQTT_PORT").parse()?;
     let socket_addr = (host_addr, port);
 
-    info!("Connecting to MQTT server...");
+    println!("Connecting to MQTT server...");
     socket.connect(socket_addr).await?;
-    info!("Connected to MQTT server");
+    println!("Connected to MQTT server");
 
-    info!("Initializing MQTT connection");
+    println!("Initializing MQTT connection");
     let mut mqtt_config: ClientConfig<5, CountingRng> =
         ClientConfig::new(MQTTv5, CountingRng(20000));
     mqtt_config.add_username(env!("MQTT_USERNAME"));
@@ -137,7 +137,7 @@ async fn initialize_mqtt_client<'a>(
 
     client.connect_to_broker().await?;
 
-    info!("MQTT Broker connected");
+    println!("MQTT Broker connected");
 
     Ok(client)
 }
@@ -149,7 +149,7 @@ async fn handle_sensor_data(
 ) -> Result<(), Error> {
     let discovery_messages_sent = unsafe { DISCOVERY_MESSAGES_SENT };
     if !discovery_messages_sent {
-        info!("First run, sending discovery messages");
+        println!("First run, sending discovery messages");
         for s in &sensor_data.data {
             let (discovery_topic, message) = get_sensor_discovery(s);
             client
@@ -176,20 +176,20 @@ async fn handle_sensor_data(
             DISCOVERY_MESSAGES_SENT = true;
         }
     } else {
-        info!("Discovery messages already sent");
+        println!("Discovery messages already sent");
     }
 
     // act on sensor data - turn pump on/off
     sensor_data.data.iter().for_each(|entry| {
         if let Sensor::WaterLevel(WaterLevel::Full) = entry {
             // Water level is full, stop the pump in any case if it's running
-            info!("Water level is full, stopping pump");
-            ENABLE_PUMP.signal(false);
+            println!("Water level is full, stopping pump");
+            update_pump_state(false);
         } else if let Sensor::PumpTrigger(enabled) = entry {
             // Pump trigger is enabled, start the pump
             if *enabled {
-                info!("Soil moisture is low, starting pump");
-                ENABLE_PUMP.signal(true);
+                println!("Soil moisture is low, starting pump");
+                update_pump_state(true);
             }
         }
     });
@@ -200,7 +200,7 @@ async fn handle_sensor_data(
         let message = json!({ "value": value }).to_string();
         let topic_name = format!("{}/{}", DEVICE_ID, key);
 
-        info!(
+        println!(
             "Publishing to topic {}, message: {}",
             topic_name.as_str(),
             message.as_str()
@@ -220,7 +220,7 @@ async fn handle_sensor_data(
 
     let pump_topic = format!("{}/pump/state", DEVICE_ID);
     let message = "OFF";
-    info!(
+    println!(
         "Publishing to topic {}, message: {}",
         pump_topic.as_str(),
         message
@@ -246,13 +246,21 @@ fn handle_mqtt_message(topic: &str, data: &[u8]) {
     let msg = str::from_utf8(data).ok();
 
     if let Some(message) = msg {
-        info!("Received message: {} on topic {}", msg, topic);
+        println!("Received message: {:?} on topic {}", msg, topic);
         let state = message == "ON";
-        info!("Pump state: {}", state);
-        ENABLE_PUMP.signal(state);
+        println!("Pump state: {}", state);
+        update_pump_state(state);
     } else {
-        info!("Invalid message received on topic {}", topic);
+        println!("Invalid message received on topic {}", topic);
     }
+}
+
+pub fn update_pump_state(state: bool) {
+    // Use a scoped block so that the signal operation (which may internally acquire a mutex)
+    // does not accidentally span long-running operations.
+    {
+        ENABLE_PUMP.signal(state);
+    } // Critical section ends here immediately.
 }
 
 /// Get the MQTT discovery message for a sensor
@@ -316,13 +324,25 @@ fn get_common_device_info(topic: &str, name: &str) -> Value {
     })
 }
 
-#[derive(Debug, defmt::Format)]
+#[derive(Debug)]
 enum Error {
     Port,
     Dns(DnsError),
     Connection(ConnectError),
     Broker(ReasonCode),
     Display(display::Error),
+}
+
+impl core::fmt::Display for Error {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Error::Port => write!(f, "Port error"),
+            Error::Dns(e) => write!(f, "DNS error: {:?}", e),
+            Error::Connection(e) => write!(f, "Connection error: {:?}", e),
+            Error::Broker(e) => write!(f, "Broker error: {:?}", e),
+            Error::Display(e) => write!(f, "Display error: {:?}", e),
+        }
+    }
 }
 
 impl From<embassy_net::dns::Error> for Error {
