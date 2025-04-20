@@ -200,11 +200,9 @@ async fn process_mqtt(
             println!("Water level is full, stopping pump");
             update_pump_state(false);
         } else if let Sensor::PumpTrigger(enabled) = entry {
-            // Pump trigger is enabled, start the pump
-            if *enabled {
-                println!("Soil moisture is low, starting pump");
-                update_pump_state(true);
-            }
+            let enabled = *enabled;
+            println!("Pump trigger value: {} - updating pump state", enabled);
+            update_pump_state(enabled);
         }
     });
 
