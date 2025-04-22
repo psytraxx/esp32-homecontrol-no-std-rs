@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-esp-backtrace = { version = "0.15.0", features = [
+esp-backtrace = { version = "0.15.1", features = [
     "esp32s3",
     "exception-handler",
     "panic-handler",
@@ -36,12 +36,12 @@ rust-mqtt = { version = "0.3.0", default-features = false, features = [] }
 embedded-text = "0.7.2"
 embedded-graphics = { version = "0.8.1", features = [] }
 embedded-hal = { version = "1.0.0", features = [] }
-serde = { version = "1.0.215", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.133", default-features = false, features = [
+serde = { version = "1.0.219", default-features = false, features = ["derive"] }
+serde_json = { version = "1.0.140", default-features = false, features = [
     "alloc",
 ] }
 embassy-futures = { version = "0.1.1", features = [] }
-embassy-sync = { version = "0.6.0", features = [] }
+embassy-sync = { version = "0.6.2", features = [] }
 static_cell = "2.1.0"
 nb = { version = "1.1.0", features = [] }
 

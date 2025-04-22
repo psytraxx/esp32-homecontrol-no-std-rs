@@ -199,18 +199,12 @@ pub async fn sensor_task(
                 .data
                 .push(Sensor::BatteryVoltage(avg_battery_voltage))
                 .expect("Too many samples");
-        } else {
-            println!("Error measuring battery voltage");
         }
 
-        if battery_voltage_samples.is_empty() {
-            println!(
-                "No battery voltage samples collected - skipping this cycle {:?}",
-                &sensor_data
-            );
-        } else {
-            sender.send(sensor_data).await;
-        }
+        // no battery samples - no publish!
+        sensor_data.publish = !battery_voltage_samples.is_empty();
+
+        sender.send(sensor_data).await;
 
         // Power off the sensors
         moisture_power_pin.set_low();

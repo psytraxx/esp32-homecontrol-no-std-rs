@@ -147,6 +147,20 @@ async fn handle_sensor_data(
     display: &mut Display<'static, Delay>,
     sensor_data: SensorData,
 ) -> Result<(), Error> {
+    if sensor_data.publish {
+        process_mqtt(client, &sensor_data).await?;
+    } else {
+        println!("skipping publishing to MQTT");
+    }
+
+    process_display(display, &sensor_data).await?;
+    Ok(())
+}
+
+async fn process_mqtt(
+    client: &mut MqttClientImpl<'_>,
+    sensor_data: &SensorData,
+) -> Result<(), Error> {
     let discovery_messages_sent = unsafe { DISCOVERY_MESSAGES_SENT };
     if !discovery_messages_sent {
         println!("First run, sending discovery messages");
@@ -186,11 +200,9 @@ async fn handle_sensor_data(
             println!("Water level is full, stopping pump");
             update_pump_state(false);
         } else if let Sensor::PumpTrigger(enabled) = entry {
-            // Pump trigger is enabled, start the pump
-            if *enabled {
-                println!("Soil moisture is low, starting pump");
-                update_pump_state(true);
-            }
+            let enabled = *enabled;
+            println!("Pump trigger value: {} - updating pump state", enabled);
+            update_pump_state(enabled);
         }
     });
 
@@ -216,8 +228,6 @@ async fn handle_sensor_data(
             .await?;
     }
 
-    display.write_multiline(&format!("{}", sensor_data))?;
-
     let pump_topic = format!("{}/pump/state", DEVICE_ID);
     let message = "OFF";
     println!(
@@ -234,11 +244,16 @@ async fn handle_sensor_data(
             false,
         )
         .await?;
+    Ok(())
+}
 
+async fn process_display(
+    display: &mut Display<'static, Delay>,
+    sensor_data: &SensorData,
+) -> Result<(), Error> {
+    display.write_multiline(&format!("{}", sensor_data))?;
     Timer::after(Duration::from_secs(AWAKE_DURATION_SECONDS)).await;
-
     display.enable_powersave()?;
-
     Ok(())
 }
 
