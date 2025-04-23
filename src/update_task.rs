@@ -26,7 +26,7 @@ use static_cell::StaticCell;
 use crate::{
     config::{
         AWAKE_DURATION_SECONDS, DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
-        HOMEASSISTANT_SENSOR_SWITCH, HOMEASSISTANT_SENSOR_TOPIC,
+        HOMEASSISTANT_SENSOR_TOPIC, HOMEASSISTANT_VALVE_TOPIC,
     },
     display::{self, Display, DisplayTrait},
     domain::{Sensor, SensorData, WaterLevel},
@@ -69,10 +69,7 @@ pub async fn update_task(
             }
         };
 
-        if let Err(e) = client
-            .subscribe_to_topic("esp32_breadboard/pump/command")
-            .await
-        {
+        if let Err(e) = client.subscribe_to_topic("esp32_breadboard/pump/set").await {
             println!("Error subscribing to pump command topic: {}", e);
             continue;
         }
@@ -261,10 +258,14 @@ fn handle_mqtt_message(topic: &str, data: &[u8]) {
     let msg = str::from_utf8(data).ok();
 
     if let Some(message) = msg {
-        println!("Received message: {:?} on topic {}", msg, topic);
-        let state = message == "ON";
-        println!("Pump state: {}", state);
-        update_pump_state(state);
+        if topic.ends_with("/pump/set") {
+            // Only process pump command if this is the correct topic.
+            let state = message == "OPEN";
+            println!("Pump trigger received. State: {}", state);
+            update_pump_state(state);
+        } else {
+            println!("Message on unhandled topic: {}", topic);
+        }
     } else {
         println!("Invalid message received on topic {}", topic);
     }
@@ -312,15 +313,14 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
 
 fn get_pump_discovery(topic: &str) -> (String, String) {
     let mut payload = get_common_device_info(topic, "Pump");
-    payload["state_topic"] = json!(format!("{}/{}/state", DEVICE_ID, topic));
-    payload["command_topic"] = json!(format!("{}/{}/command", DEVICE_ID, topic));
-    // TODO: availability
-    payload["payload_on"] = json!("ON");
-    payload["payload_off"] = json!("OFF");
+    payload["command_topic"] = json!(format!("{}/{}/set", DEVICE_ID, topic));
+    payload["payload_open"] = json!("OPEN");
+    payload["retain"] = json!(true);
+    payload["payload_close"] = json!("CLOSE");
 
     let discovery_topic = format!(
         "{}/{}/{}_{}/config",
-        HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_SWITCH, DEVICE_ID, topic
+        HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_VALVE_TOPIC, DEVICE_ID, topic
     );
 
     (discovery_topic, payload.to_string())
