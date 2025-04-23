@@ -104,7 +104,7 @@ pub async fn update_task(
                 Either::Second(result) => match result {
                     Ok((topic, data)) => {
                         action_to_perform =
-                            process_received_mqtt_message(&topic, &data, &pump_set_topic);
+                            process_received_mqtt_message(topic, data, &pump_set_topic);
                     }
                     Err(e) => {
                         println!("Error receiving MQTT message: {}. Reconnecting...", e);
