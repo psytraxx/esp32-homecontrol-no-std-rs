@@ -181,8 +181,10 @@ async fn handle_sensor_data(
     display: &mut Display<'static, Delay>,
     sensor_data: SensorData,
 ) -> Result<(), Error> {
+    publish_discovery_topics(client, &sensor_data).await?;
+
     if sensor_data.publish {
-        process_mqtt(client, &sensor_data).await?;
+        publish_sensor_data(client, &sensor_data).await?;
     } else {
         println!("skipping publishing to MQTT");
     }
@@ -191,7 +193,7 @@ async fn handle_sensor_data(
     Ok(())
 }
 
-async fn process_mqtt(
+async fn publish_discovery_topics(
     client: &mut MqttClientImpl<'_>,
     sensor_data: &SensorData,
 ) -> Result<(), Error> {
@@ -226,7 +228,13 @@ async fn process_mqtt(
     } else {
         println!("Discovery messages already sent");
     }
+    Ok(())
+}
 
+async fn publish_sensor_data(
+    client: &mut MqttClientImpl<'_>,
+    sensor_data: &SensorData,
+) -> Result<(), Error> {
     sensor_data.data.iter().for_each(|entry| {
         if let Sensor::WaterLevel(WaterLevel::Full) = entry {
             println!("Water level is full, stopping pump");
