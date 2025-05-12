@@ -26,7 +26,7 @@ use static_cell::StaticCell;
 use crate::{
     config::{
         AWAKE_DURATION_SECONDS, DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
-        HOMEASSISTANT_SENSOR_SWITCH, HOMEASSISTANT_SENSOR_TOPIC,
+        HOMEASSISTANT_SENSOR_TOPIC, HOMEASSISTANT_VALVE_TOPIC,
     },
     display::{self, Display, DisplayTrait},
     domain::{Sensor, SensorData, WaterLevel},
@@ -45,6 +45,11 @@ struct MqttResources {
 
 static RESOURCES: StaticCell<MqttResources> = StaticCell::new();
 
+enum MqttAction {
+    None,
+    ClearRetained(String),
+}
+
 #[embassy_executor::task]
 pub async fn update_task(
     stack: Stack<'static>,
@@ -60,41 +65,70 @@ pub async fn update_task(
 
     let resources = RESOURCES.init(resources);
 
-    loop {
+    // Outer loop for handling reconnections
+    'reconnect: loop {
         let mut client = match initialize_mqtt_client(stack, resources).await {
             Ok(client) => client,
             Err(e) => {
-                println!("Error initializing MQTT client: {:?}", e);
-                continue;
+                println!("Error initializing MQTT client: {:?}. Retrying in 5s...", e);
+                Timer::after(Duration::from_secs(5)).await;
+                continue 'reconnect; // Retry connection
             }
         };
 
-        if let Err(e) = client
-            .subscribe_to_topic("esp32_breadboard/pump/command")
-            .await
-        {
-            println!("Error subscribing to pump command topic: {}", e);
-            continue;
+        let pump_set_topic = format!("{}/pump/set", DEVICE_ID);
+
+        if let Err(e) = client.subscribe_to_topic(&pump_set_topic).await {
+            println!(
+                "Error subscribing to pump command topic: {}. Retrying connection...",
+                e
+            );
+            Timer::after(Duration::from_secs(5)).await;
+            continue 'reconnect; // Retry connection
         }
 
-        println!("Subscribed to pump command topic");
+        println!("Subscribed to pump command topic: {}", pump_set_topic);
 
-        match select(receiver.receive(), client.receive_message()).await {
-            Either::First(sensor_data) => {
-                if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await {
-                    println!("Error handling sensor data: {:?}", e);
-                    continue;
+        // Inner loop for processing events while connected
+        loop {
+            let mut action_to_perform = MqttAction::None;
+
+            match select(receiver.receive(), client.receive_message()).await {
+                Either::First(sensor_data) => {
+                    if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await
+                    {
+                        println!("Error handling sensor data: {:?}. Reconnecting...", e);
+                        continue 'reconnect; // Break inner loop, go to outer loop for reconnect
+                    }
                 }
+                Either::Second(result) => match result {
+                    Ok((topic, data)) => {
+                        action_to_perform =
+                            process_received_mqtt_message(topic, data, &pump_set_topic);
+                    }
+                    Err(e) => {
+                        println!("Error receiving MQTT message: {}. Reconnecting...", e);
+                        continue 'reconnect; // Break inner loop, go to outer loop for reconnect
+                    }
+                },
             }
-            Either::Second(result) => match result {
-                Ok((topic, data)) => {
-                    handle_mqtt_message(topic, data);
+
+            match action_to_perform {
+                MqttAction::ClearRetained(topic_to_clear) => {
+                    println!(
+                        "Executing clear of retained message on topic: {}",
+                        topic_to_clear
+                    );
+                    if let Err(e) = client
+                        .send_message(&topic_to_clear, &[], QualityOfService::QoS0, true)
+                        .await
+                    {
+                        println!("Error clearing retained message: {}. Reconnecting...", e);
+                        continue 'reconnect; // Break inner loop, go to outer loop for reconnect
+                    }
                 }
-                Err(e) => {
-                    println!("Error handling MQTT message: {}", e);
-                    continue;
-                }
-            },
+                MqttAction::None => {}
+            }
         }
     }
 }
@@ -147,8 +181,10 @@ async fn handle_sensor_data(
     display: &mut Display<'static, Delay>,
     sensor_data: SensorData,
 ) -> Result<(), Error> {
+    publish_discovery_topics(client, &sensor_data).await?;
+
     if sensor_data.publish {
-        process_mqtt(client, &sensor_data).await?;
+        publish_sensor_data(client, &sensor_data).await?;
     } else {
         println!("skipping publishing to MQTT");
     }
@@ -157,7 +193,7 @@ async fn handle_sensor_data(
     Ok(())
 }
 
-async fn process_mqtt(
+async fn publish_discovery_topics(
     client: &mut MqttClientImpl<'_>,
     sensor_data: &SensorData,
 ) -> Result<(), Error> {
@@ -192,11 +228,15 @@ async fn process_mqtt(
     } else {
         println!("Discovery messages already sent");
     }
+    Ok(())
+}
 
-    // act on sensor data - turn pump on/off
+async fn publish_sensor_data(
+    client: &mut MqttClientImpl<'_>,
+    sensor_data: &SensorData,
+) -> Result<(), Error> {
     sensor_data.data.iter().for_each(|entry| {
         if let Sensor::WaterLevel(WaterLevel::Full) = entry {
-            // Water level is full, stop the pump in any case if it's running
             println!("Water level is full, stopping pump");
             update_pump_state(false);
         } else if let Sensor::PumpTrigger(enabled) = entry {
@@ -228,22 +268,6 @@ async fn process_mqtt(
             .await?;
     }
 
-    let pump_topic = format!("{}/pump/state", DEVICE_ID);
-    let message = "OFF";
-    println!(
-        "Publishing to topic {}, message: {}",
-        pump_topic.as_str(),
-        message
-    );
-
-    client
-        .send_message(
-            &pump_topic,
-            message.as_bytes(),
-            QualityOfService::QoS0,
-            false,
-        )
-        .await?;
     Ok(())
 }
 
@@ -257,28 +281,39 @@ async fn process_display(
     Ok(())
 }
 
-fn handle_mqtt_message(topic: &str, data: &[u8]) {
+fn process_received_mqtt_message(topic: &str, data: &[u8], pump_set_topic: &str) -> MqttAction {
     let msg = str::from_utf8(data).ok();
+    let mut action = MqttAction::None;
 
     if let Some(message) = msg {
-        println!("Received message: {:?} on topic {}", msg, topic);
-        let state = message == "ON";
-        println!("Pump state: {}", state);
-        update_pump_state(state);
+        if topic == pump_set_topic {
+            if message.is_empty() {
+                println!("Received empty message on '{}', likely the cleared retained message. Ignoring.", topic);
+            } else {
+                let state = message == "OPEN";
+                println!("Pump command received on '{}'. State: {}", topic, state);
+                update_pump_state(state);
+
+                if state {
+                    println!("Scheduling clear of retained message on topic: {}", topic);
+                    action = MqttAction::ClearRetained(topic.to_string());
+                }
+            }
+        } else {
+            println!("Message on unhandled topic: {}", topic);
+        }
     } else {
-        println!("Invalid message received on topic {}", topic);
+        println!("Invalid UTF-8 message received on topic {}", topic);
     }
+    action
 }
 
 pub fn update_pump_state(state: bool) {
-    // Use a scoped block so that the signal operation (which may internally acquire a mutex)
-    // does not accidentally span long-running operations.
     {
         ENABLE_PUMP.signal(state);
-    } // Critical section ends here immediately.
+    }
 }
 
-/// Get the MQTT discovery message for a sensor
 fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     let topic = s.topic();
     let mut payload = get_common_device_info(topic, s.name());
@@ -312,15 +347,14 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
 
 fn get_pump_discovery(topic: &str) -> (String, String) {
     let mut payload = get_common_device_info(topic, "Pump");
-    payload["state_topic"] = json!(format!("{}/{}/state", DEVICE_ID, topic));
-    payload["command_topic"] = json!(format!("{}/{}/command", DEVICE_ID, topic));
-    // TODO: availability
-    payload["payload_on"] = json!("ON");
-    payload["payload_off"] = json!("OFF");
+    payload["command_topic"] = json!(format!("{}/{}/set", DEVICE_ID, topic));
+    payload["payload_open"] = json!("OPEN");
+    payload["retain"] = json!(true);
+    payload["payload_close"] = json!("CLOSE");
 
     let discovery_topic = format!(
         "{}/{}/{}_{}/config",
-        HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_SWITCH, DEVICE_ID, topic
+        HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_VALVE_TOPIC, DEVICE_ID, topic
     );
 
     (discovery_topic, payload.to_string())
