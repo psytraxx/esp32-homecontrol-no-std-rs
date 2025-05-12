@@ -140,8 +140,7 @@ cd esp32-homecontrol-no-std-rs
 
 See the [ESP-RS book](https://docs.esp-rs.org/book/introduction.html).
 
-Install espup: [espup GitHub](https://github.com/esp-rs/espup)  
-Install probe-rs: [probe-rs GitHub](https://github.com/probe-rs/probe-rs)
+Install espup: [espup GitHub](https://github.com/esp-rs/espup)
 
 ```sh
 espup install
