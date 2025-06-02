@@ -15,10 +15,14 @@ use heapless::Vec;
 use crate::{
     config::AWAKE_DURATION_SECONDS,
     dht11::Dht11,
-    domain::{MoistureLevel, Sensor, SensorData, WaterLevel},
+    domain::{Sensor, SensorData, WaterLevel},
+    BOOT_COUNT,
 };
 
-const USB_CHARGING_VOLTAGE: u16 = 4200;
+/// Number of boots between pump trigger events.
+/// The pump will be enabled every Nth boot, where N is this value.
+const PUMP_TRIGGER_INTERVAL: u32 = 10;
+const USB_CHARGING_VOLTAGE: u16 = 4100;
 const DHT11_WARMUP_DELAY_MILLISECONDS: u64 = 2000;
 const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
 // in this case we keep 3 samples for averaging - first and last are ignored
@@ -162,7 +166,7 @@ pub async fn sensor_task(
 
         if let Some(avg_water_level) = calculate_average(&mut water_level_samples) {
             let waterlevel: WaterLevel = avg_water_level.into();
-            println!("Water level: {}", waterlevel);
+            println!("Pot base water level: {}", waterlevel);
             sensor_data
                 .data
                 .push(Sensor::WaterLevel(avg_water_level.into()))
@@ -182,16 +186,18 @@ pub async fn sensor_task(
                 .data
                 .push(Sensor::SoilMoisture(avg_soil_moisture.into()))
                 .expect("Too many samples");
-
-            // Set pump trigger to true if majority of samples indicated it should be on
-            let moisture_level: MoistureLevel = avg_soil_moisture.into();
-            sensor_data
-                .data
-                .push(Sensor::PumpTrigger(moisture_level == MoistureLevel::Dry))
-                .expect("Too many samples");
         } else {
             println!("Unable to generate average value of soil moisture");
         }
+
+        let boot_count = unsafe { BOOT_COUNT };
+
+        let pump_enabled = boot_count % PUMP_TRIGGER_INTERVAL == 0;
+
+        sensor_data
+            .data
+            .push(Sensor::PumpTrigger(pump_enabled))
+            .expect("Too many samples");
 
         if let Some(avg_battery_voltage) = calculate_average(&mut battery_voltage_samples) {
             println!("Battery voltage: {}mV", avg_battery_voltage);

@@ -119,8 +119,6 @@ The built-in 1.9" ST7789 LCD display on the T-Display-S3 has the following pin c
 - [heapless](https://crates.io/crates/heapless)
 - [static_cell](https://crates.io/crates/static_cell)
 - [rand_core](https://crates.io/crates/rand_core)
-- [defmt](https://crates.io/crates/defmt)
-- [defmt-rtt](https://crates.io/crates/defmt-rtt)
 - ...and others
 
 ---

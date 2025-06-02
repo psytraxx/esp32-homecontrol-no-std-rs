@@ -235,14 +235,21 @@ async fn publish_sensor_data(
     client: &mut MqttClientImpl<'_>,
     sensor_data: &SensorData,
 ) -> Result<(), Error> {
+    // check if we can enable the pump
+    let allow_enable_pump = sensor_data
+        .data
+        .iter()
+        .any(|entry| matches!(entry, Sensor::WaterLevel(WaterLevel::Empty)));
+
     sensor_data.data.iter().for_each(|entry| {
-        if let Sensor::WaterLevel(WaterLevel::Full) = entry {
-            println!("Water level is full, stopping pump");
-            update_pump_state(false);
-        } else if let Sensor::PumpTrigger(enabled) = entry {
+        if let Sensor::PumpTrigger(enabled) = entry {
             let enabled = *enabled;
-            println!("Pump trigger value: {} - updating pump state", enabled);
-            update_pump_state(enabled);
+            if allow_enable_pump {
+                println!("Pump trigger value: {} - updating pump state", enabled);
+                update_pump_state(enabled);
+            } else {
+                update_pump_state(false);
+            }
         }
     });
 
