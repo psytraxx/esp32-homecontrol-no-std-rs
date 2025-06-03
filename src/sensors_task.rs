@@ -24,21 +24,21 @@ const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
 // in this case we keep 3 samples for averaging - first and last are ignored
 const SENSOR_SAMPLE_COUNT: usize = 5;
 
-pub struct SensorPeripherals {
-    pub dht11_digital_pin: GPIO1<'static>,
-    pub battery_pin: GPIO4<'static>,
-    pub moisture_power_pin: GPIO16<'static>,
-    pub moisture_analog_pin: GPIO11<'static>,
-    pub water_level_analog_pin: GPIO12<'static>,
-    pub water_level_power_pin: GPIO21<'static>,
-    pub adc1: ADC1<'static>,
-    pub adc2: ADC2<'static>,
+pub struct SensorPeripherals<'a> {
+    pub dht11_digital_pin: GPIO1<'a>,
+    pub battery_pin: GPIO4<'a>,
+    pub moisture_power_pin: GPIO16<'a>,
+    pub moisture_analog_pin: GPIO11<'a>,
+    pub water_level_analog_pin: GPIO12<'a>,
+    pub water_level_power_pin: GPIO21<'a>,
+    pub adc1: ADC1<'a>,
+    pub adc2: ADC2<'a>,
 }
 
 #[embassy_executor::task]
 pub async fn sensor_task(
     sender: Sender<'static, NoopRawMutex, SensorData, 3>,
-    p: SensorPeripherals,
+    p: SensorPeripherals<'static>,
 ) {
     println!("Create");
 

@@ -52,25 +52,25 @@ pub trait DisplayTrait {
     fn enable_powersave(&mut self) -> Result<(), Error>;
 }
 
-pub struct DisplayPeripherals {
-    pub rst: GPIO5<'static>,
-    pub cs: GPIO6<'static>,
-    pub dc: GPIO7<'static>,
-    pub wr: GPIO8<'static>,
-    pub rd: GPIO9<'static>,
-    pub backlight: GPIO38<'static>,
-    pub d0: GPIO39<'static>,
-    pub d1: GPIO40<'static>,
-    pub d2: GPIO41<'static>,
-    pub d3: GPIO42<'static>,
-    pub d4: GPIO45<'static>,
-    pub d5: GPIO46<'static>,
-    pub d6: GPIO47<'static>,
-    pub d7: GPIO48<'static>,
+pub struct DisplayPeripherals<'a> {
+    pub rst: GPIO5<'a>,
+    pub cs: GPIO6<'a>,
+    pub dc: GPIO7<'a>,
+    pub wr: GPIO8<'a>,
+    pub rd: GPIO9<'a>,
+    pub backlight: GPIO38<'a>,
+    pub d0: GPIO39<'a>,
+    pub d1: GPIO40<'a>,
+    pub d2: GPIO41<'a>,
+    pub d3: GPIO42<'a>,
+    pub d4: GPIO45<'a>,
+    pub d5: GPIO46<'a>,
+    pub d6: GPIO47<'a>,
+    pub d7: GPIO48<'a>,
 }
 
-impl<D: DelayNs> Display<'_, D> {
-    pub fn new(p: DisplayPeripherals, mut delay: D) -> Result<Self, Error> {
+impl<'a, D: DelayNs> Display<'a, D> {
+    pub fn new(p: DisplayPeripherals<'a>, mut delay: D) -> Result<Self, Error> {
         let backlight = Output::new(p.backlight, Level::Low, OutputConfig::default());
 
         let dc = Output::new(p.dc, Level::Low, OutputConfig::default());
