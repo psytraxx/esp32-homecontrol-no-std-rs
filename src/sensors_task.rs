@@ -70,39 +70,41 @@ pub async fn sensor_task(
         let mut battery_voltage_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
         let mut water_level_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
 
-        // Power on the sensors
-        moisture_power_pin.set_high();
-        water_level_power_pin.set_high();
-
-        let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS);
-
         for i in 0..SENSOR_SAMPLE_COUNT {
             println!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
 
-            {
-                let mut dht11_pin = Output::new(
-                    &mut p.dht11_digital_pin,
-                    Level::High,
-                    OutputConfig::default()
-                        .with_drive_mode(DriveMode::OpenDrain)
-                        .with_pull(Pull::None),
-                )
-                .into_flex();
-                dht11_pin.enable_input(true);
+            let mut dht11_pin = Output::new(
+                &mut p.dht11_digital_pin,
+                Level::High,
+                OutputConfig::default()
+                    .with_drive_mode(DriveMode::OpenDrain)
+                    .with_pull(Pull::None),
+            )
+            .into_flex();
+            dht11_pin.enable_input(true);
 
-                let mut dht11_sensor = Dht11::new(dht11_pin, Delay);
+            let mut dht11_sensor = Dht11::new(dht11_pin, Delay);
 
-                // DHT11 needs a longer initial delay
-                Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;
-                if let Ok(result) = dht11_sensor.read() {
-                    air_temperature_samples
-                        .push(result.temperature)
-                        .expect("Too many samples");
-                    air_humidity_samples
-                        .push(result.humidity)
-                        .expect("Too many samples");
-                }
-            } // drop dht11_pin
+            // DHT11 needs a longer initial delay
+            Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;
+            if let Ok(result) = dht11_sensor.read() {
+                air_temperature_samples
+                    .push(result.temperature)
+                    .expect("Too many samples");
+                air_humidity_samples
+                    .push(result.humidity)
+                    .expect("Too many samples");
+            }
+            // Immediately put pin into low power mode after DHT11 usage
+            Output::new(
+                &mut p.dht11_digital_pin,
+                Level::Low,
+                OutputConfig::default()
+                    .with_drive_mode(DriveMode::PushPull)
+                    .with_pull(Pull::None),
+            );
+
+            moisture_power_pin.set_high();
 
             if let Some(result) = sample_adc(&mut adc2, &mut moisture_pin).await {
                 soil_moisture_samples
@@ -112,11 +114,17 @@ pub async fn sensor_task(
                 println!("Error reading soil moisture sensor");
             }
 
+            moisture_power_pin.set_low();
+
+            water_level_power_pin.set_high();
+
             if let Some(value) = sample_adc(&mut adc2, &mut waterlevel_pin).await {
                 water_level_samples.push(value).expect("Too many samples");
             } else {
                 println!("Error reading water level sensor");
             }
+
+            water_level_power_pin.set_low();
 
             if let Some(value) = sample_adc(&mut adc1, &mut battery_pin).await {
                 let value = value * 2; // The battery voltage divider is 2:1
@@ -212,16 +220,7 @@ pub async fn sensor_task(
 
         sender.send(sensor_data).await;
 
-        // Power off the sensors
-        moisture_power_pin.set_low();
-        water_level_power_pin.set_low();
-        // Force the pin into an explicit low-power state after the sensor is dropped
-        Output::new(
-            &mut p.dht11_digital_pin,
-            Level::Low,
-            OutputConfig::default(),
-        );
-
+        let sampling_period = Duration::from_secs(AWAKE_DURATION_SECONDS);
         Timer::after(sampling_period).await;
     }
 }
