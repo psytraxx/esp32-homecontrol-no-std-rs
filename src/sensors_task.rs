@@ -5,8 +5,8 @@ use esp_hal::{
         Adc, AdcCalCurve, AdcCalLine, AdcCalScheme, AdcChannel, AdcConfig, AdcPin, Attenuation,
         RegisterAccess,
     },
-    gpio::{DriveMode, GpioPin, Level, Output, OutputConfig, Pull},
-    peripherals::{ADC1, ADC2},
+    gpio::{DriveMode, Level, Output, OutputConfig, Pull},
+    peripherals::{ADC1, ADC2, GPIO1, GPIO11, GPIO12, GPIO16, GPIO21, GPIO4},
     Blocking,
 };
 use esp_println::println;
@@ -29,26 +29,26 @@ const SENSOR_WARMUP_DELAY_MILLISECONDS: u64 = 50;
 const SENSOR_SAMPLE_COUNT: usize = 5;
 
 /// ADC and GPIO handles
-struct SensorHardware {
-    adc1: Adc<'static, ADC1, Blocking>,
-    adc2: Adc<'static, ADC2, Blocking>,
-    moisture_pin: AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
-    waterlevel_pin: AdcPin<GpioPin<12>, ADC2, AdcCalCurve<ADC2>>,
-    battery_pin: AdcPin<GpioPin<4>, ADC1, AdcCalLine<ADC1>>,
-    moisture_power_pin: Output<'static>,
-    water_level_power_pin: Output<'static>,
-    dht11_digital_pin: GpioPin<1>,
+struct SensorHardware<'a> {
+    adc1: Adc<'a, ADC1<'a>, Blocking>,
+    adc2: Adc<'a, ADC2<'a>, Blocking>,
+    moisture_pin: AdcPin<GPIO11<'a>, ADC2<'a>, AdcCalCurve<ADC2<'a>>>,
+    waterlevel_pin: AdcPin<GPIO12<'a>, ADC2<'a>, AdcCalCurve<ADC2<'a>>>,
+    battery_pin: AdcPin<GPIO4<'a>, ADC1<'a>, AdcCalLine<ADC1<'a>>>,
+    moisture_power_pin: Output<'a>,
+    water_level_power_pin: Output<'a>,
+    dht11_pin: esp_hal::gpio::Flex<'a>,
 }
 
 pub struct SensorPeripherals {
-    pub dht11_digital_pin: GpioPin<1>,
-    pub battery_pin: GpioPin<4>,
-    pub moisture_power_pin: GpioPin<16>,
-    pub moisture_analog_pin: GpioPin<11>,
-    pub water_level_analog_pin: GpioPin<12>,
-    pub water_level_power_pin: GpioPin<21>,
-    pub adc1: ADC1,
-    pub adc2: ADC2,
+    pub dht11_digital_pin: GPIO1<'static>,
+    pub battery_pin: GPIO4<'static>,
+    pub moisture_power_pin: GPIO16<'static>,
+    pub moisture_analog_pin: GPIO11<'static>,
+    pub water_level_analog_pin: GPIO12<'static>,
+    pub water_level_power_pin: GPIO21<'static>,
+    pub adc1: ADC1<'static>,
+    pub adc2: ADC2<'static>,
 }
 
 #[embassy_executor::task]
@@ -70,7 +70,7 @@ pub async fn sensor_task(
 }
 
 /// Initialize all sensor hardware
-async fn initialize_hardware(p: SensorPeripherals) -> SensorHardware {
+async fn initialize_hardware(p: SensorPeripherals) -> SensorHardware<'static> {
     let mut adc2_config = AdcConfig::new();
     let moisture_pin = adc2_config
         .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.moisture_analog_pin, Attenuation::_11dB);
@@ -79,13 +79,23 @@ async fn initialize_hardware(p: SensorPeripherals) -> SensorHardware {
     let adc2 = Adc::new(p.adc2, adc2_config);
 
     let mut adc1_config = AdcConfig::new();
-    let battery_pin = adc1_config
-        .enable_pin_with_cal::<GpioPin<4>, AdcCalLine<ADC1>>(p.battery_pin, Attenuation::_11dB);
+    let battery_pin = adc1_config.enable_pin_with_cal(p.battery_pin, Attenuation::_11dB);
     let adc1 = Adc::new(p.adc1, adc1_config);
 
     let moisture_power_pin = Output::new(p.moisture_power_pin, Level::Low, OutputConfig::default());
     let water_level_power_pin =
         Output::new(p.water_level_power_pin, Level::Low, OutputConfig::default());
+
+    // Setup DHT11 pin once
+    let mut dht11_pin = Output::new(
+        p.dht11_digital_pin,
+        Level::High,
+        OutputConfig::default()
+            .with_drive_mode(DriveMode::OpenDrain)
+            .with_pull(Pull::None),
+    )
+    .into_flex();
+    dht11_pin.set_input_enable(true);
 
     SensorHardware {
         adc1,
@@ -95,12 +105,12 @@ async fn initialize_hardware(p: SensorPeripherals) -> SensorHardware {
         battery_pin,
         moisture_power_pin,
         water_level_power_pin,
-        dht11_digital_pin: p.dht11_digital_pin,
+        dht11_pin,
     }
 }
 
 /// Collect data from all sensors
-async fn collect_all_sensor_data(hardware: &mut SensorHardware) -> SensorData {
+async fn collect_all_sensor_data(hardware: &mut SensorHardware<'static>) -> SensorData {
     let mut air_humidity_samples: Vec<u8, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut air_temperature_samples: Vec<u8, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut soil_moisture_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
@@ -111,7 +121,7 @@ async fn collect_all_sensor_data(hardware: &mut SensorHardware) -> SensorData {
         println!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
 
         // Read DHT11 (temperature & humidity)
-        if let Some(messurement) = read_dht11_sensor(&mut hardware.dht11_digital_pin).await {
+        if let Some(messurement) = read_dht11_sensor(&mut hardware.dht11_pin).await {
             if air_temperature_samples
                 .push(messurement.temperature)
                 .is_err()
@@ -169,28 +179,18 @@ async fn collect_all_sensor_data(hardware: &mut SensorHardware) -> SensorData {
 }
 
 /// Read DHT11 temperature and humidity sensor
-async fn read_dht11_sensor(dht11_pin: &mut GpioPin<1>) -> Option<Measurement> {
-    let mut pin = Output::new(
-        dht11_pin,
-        Level::High,
-        OutputConfig::default()
-            .with_drive_mode(DriveMode::OpenDrain)
-            .with_pull(Pull::None),
-    )
-    .into_flex();
-    pin.enable_input(true);
-
-    let mut dht11_sensor = Dht11::new(pin, Delay);
+async fn read_dht11_sensor(dht11_pin: &mut esp_hal::gpio::Flex<'static>) -> Option<Measurement> {
+    let mut dht11_sensor = Dht11::new(dht11_pin, Delay);
     Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MILLISECONDS)).await;
 
     dht11_sensor.read().ok()
 }
 
 /// Read soil moisture sensor
-async fn read_moisture_sensor(
-    adc: &mut Adc<'_, ADC2, Blocking>,
-    pin: &mut AdcPin<GpioPin<11>, ADC2, AdcCalCurve<ADC2>>,
-    power_pin: &mut Output<'_>,
+async fn read_moisture_sensor<'a>(
+    adc: &mut Adc<'a, ADC2<'a>, Blocking>,
+    pin: &mut AdcPin<GPIO11<'a>, ADC2<'a>, AdcCalCurve<ADC2<'a>>>,
+    power_pin: &mut Output<'a>,
 ) -> Option<u16> {
     power_pin.set_high();
 
@@ -201,10 +201,10 @@ async fn read_moisture_sensor(
 }
 
 /// Read water level sensor
-async fn read_water_level_sensor(
-    adc: &mut Adc<'_, ADC2, Blocking>,
-    pin: &mut AdcPin<GpioPin<12>, ADC2, AdcCalCurve<ADC2>>,
-    power_pin: &mut Output<'_>,
+async fn read_water_level_sensor<'a>(
+    adc: &mut Adc<'a, ADC2<'a>, Blocking>,
+    pin: &mut AdcPin<GPIO12<'a>, ADC2<'a>, AdcCalCurve<ADC2<'a>>>,
+    power_pin: &mut Output<'a>,
 ) -> Option<u16> {
     power_pin.set_high();
 
@@ -215,9 +215,9 @@ async fn read_water_level_sensor(
 }
 
 /// Read battery voltage
-async fn read_battery_voltage(
-    adc: &mut Adc<'_, ADC1, Blocking>,
-    pin: &mut AdcPin<GpioPin<4>, ADC1, AdcCalLine<ADC1>>,
+async fn read_battery_voltage<'a>(
+    adc: &mut Adc<'a, ADC1<'a>, Blocking>,
+    pin: &mut AdcPin<GPIO4<'a>, ADC1<'a>, AdcCalLine<ADC1<'a>>>,
 ) -> Option<u16> {
     let value = sample_adc_with_warmup(adc, pin, SENSOR_WARMUP_DELAY_MILLISECONDS).await? * 2;
 
@@ -233,14 +233,14 @@ async fn read_battery_voltage(
 }
 
 /// Sample ADC with configurable warmup delay
-async fn sample_adc_with_warmup<PIN, ADCI, ADCC>(
-    adc: &mut Adc<'_, ADCI, Blocking>,
+async fn sample_adc_with_warmup<'a, PIN, ADCI, ADCC>(
+    adc: &mut Adc<'a, ADCI, Blocking>,
     pin: &mut AdcPin<PIN, ADCI, ADCC>,
     warmup_ms: u64,
 ) -> Option<u16>
 where
     PIN: AdcChannel,
-    ADCI: RegisterAccess,
+    ADCI: RegisterAccess + 'a,
     ADCC: AdcCalScheme<ADCI>,
 {
     Timer::after(Duration::from_millis(warmup_ms)).await;
