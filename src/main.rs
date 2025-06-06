@@ -21,7 +21,7 @@ use esp_hal::{
     timer::timg::TimerGroup,
 };
 use esp_hal_embassy::main;
-use esp_println::println;
+use esp_println::{logger::init_logger, println};
 use esp_wifi::wifi::WifiError;
 use relay_task::relay_task;
 use sensors_task::{sensor_task, SensorPeripherals};
@@ -58,6 +58,8 @@ static mut DISCOVERY_MESSAGES_SENT: bool = false;
 
 #[main]
 async fn main(spawner: Spawner) {
+    init_logger(log::LevelFilter::Info);
+
     let boot_count = unsafe { BOOT_COUNT };
     println!("Current boot count = {}", &boot_count);
     unsafe {

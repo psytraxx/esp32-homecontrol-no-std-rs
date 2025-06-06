@@ -129,6 +129,5 @@ where
         // Set pin high (floating with pull-up) as safe state
         // Ignore errors during drop
         let _ = self.gpio.set_high();
-        self.delay.delay_us(40);
     }
 }
