@@ -326,6 +326,7 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     let mut payload = get_common_device_info(topic, s.name());
     payload["state_topic"] = json!(format!("{}/{}", DEVICE_ID, topic));
     payload["value_template"] = json!("{{ value_json.value }}");
+    payload["state_class"] = json!("measurement");
     payload["platform"] = json!("sensor");
     payload["unique_id"] = json!(format!("{}_{}", DEVICE_ID, topic));
 
