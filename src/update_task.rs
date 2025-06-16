@@ -22,6 +22,7 @@ use rust_mqtt::{
 };
 use serde_json::{json, Value};
 use static_cell::StaticCell;
+use strum::IntoEnumIterator;
 
 use crate::{
     config::{
@@ -181,7 +182,7 @@ async fn handle_sensor_data(
     display: &mut Display<'static, Delay>,
     sensor_data: SensorData,
 ) -> Result<(), Error> {
-    publish_discovery_topics(client, &sensor_data).await?;
+    publish_discovery_topics(client).await?;
 
     if sensor_data.publish {
         publish_sensor_data(client, &sensor_data).await?;
@@ -193,15 +194,12 @@ async fn handle_sensor_data(
     Ok(())
 }
 
-async fn publish_discovery_topics(
-    client: &mut MqttClientImpl<'_>,
-    sensor_data: &SensorData,
-) -> Result<(), Error> {
+async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
     let discovery_messages_sent = unsafe { DISCOVERY_MESSAGES_SENT };
     if !discovery_messages_sent {
         println!("First run, sending discovery messages");
-        for s in &sensor_data.data {
-            let (discovery_topic, message) = get_sensor_discovery(s);
+        for s in Sensor::iter() {
+            let (discovery_topic, message) = get_sensor_discovery(&s);
             client
                 .send_message(
                     &discovery_topic,
@@ -210,6 +208,7 @@ async fn publish_discovery_topics(
                     true,
                 )
                 .await?;
+            println!("Discovery message sent for sensor: {}", s.name());
         }
 
         let (discovery_topic, message) = get_pump_discovery("pump");

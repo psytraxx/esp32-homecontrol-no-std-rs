@@ -2,6 +2,7 @@ use alloc::string::{String, ToString};
 use core::fmt::{Display, Formatter, Result};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
 //soil is wet
@@ -30,11 +31,12 @@ impl Display for SensorData {
 }
 
 /// Represents the qualitative state of soil moisture as interpreted from sensor readings.
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
 pub enum MoistureLevel {
     Wet,   // Soil is wet
     Moist, // Soil is moist (intermediate)
-    Dry,   // Soil is dry
+    #[default]
+    Dry, // Soil is dry
 }
 
 impl Display for MoistureLevel {
@@ -62,9 +64,10 @@ impl From<u16> for MoistureLevel {
 }
 
 /// Indicates if water is present at the base of the pot (drainage area).
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub enum WaterLevel {
-    Full,  // Water detected at the pot base
+    Full, // Water detected at the pot base
+    #[default]
     Empty, // No water detected at the pot base
 }
 
@@ -88,7 +91,7 @@ impl From<u16> for WaterLevel {
 }
 
 /// Represents all supported sensor types and their current readings.
-#[derive(Debug)]
+#[derive(Debug, EnumIter)]
 pub enum Sensor {
     WaterLevel(WaterLevel),                // Water at pot base
     AirTemperature(u8),                    // Air temperature in °C
@@ -99,7 +102,7 @@ pub enum Sensor {
     PumpTrigger(bool),                     // Whether pump should be triggered
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SoilMoistureRawLevel(u16);
 
 impl From<u16> for SoilMoistureRawLevel {
