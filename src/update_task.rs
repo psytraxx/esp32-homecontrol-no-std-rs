@@ -326,7 +326,6 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     let mut payload = get_common_device_info(topic, s.name());
     payload["state_topic"] = json!(format!("{}/{}", DEVICE_ID, topic));
     payload["value_template"] = json!("{{ value_json.value }}");
-    payload["state_class"] = json!("measurement");
     payload["platform"] = json!("sensor");
     payload["unique_id"] = json!(format!("{}_{}", DEVICE_ID, topic));
 
@@ -343,6 +342,8 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     let unit = s.unit();
     if let Some(unit) = unit {
         payload["unit_of_measurement"] = json!(unit);
+        // only set state_class if unit is present - enables Home Assistant to display the unit correctly and keep track of state changes
+        payload["state_class"] = json!("measurement");
     }
 
     let discovery_topic = format!(
