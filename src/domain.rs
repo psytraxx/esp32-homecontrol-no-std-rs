@@ -2,6 +2,7 @@ use alloc::string::{String, ToString};
 use core::fmt::{Display, Formatter, Result};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
+use strum::EnumIter;
 
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
 //soil is wet
@@ -29,11 +30,13 @@ impl Display for SensorData {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, PartialEq)]
+/// Represents the qualitative state of soil moisture as interpreted from sensor readings.
+#[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
 pub enum MoistureLevel {
-    Wet,
-    Moist,
-    Dry,
+    Wet,   // Soil is wet
+    Moist, // Soil is moist (intermediate)
+    #[default]
+    Dry, // Soil is dry
 }
 
 impl Display for MoistureLevel {
@@ -60,10 +63,12 @@ impl From<u16> for MoistureLevel {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+/// Indicates if water is present at the base of the pot (drainage area).
+#[derive(Debug, Serialize, Deserialize, Default)]
 pub enum WaterLevel {
-    Full,
-    Empty,
+    Full, // Water detected at the pot base
+    #[default]
+    Empty, // No water detected at the pot base
 }
 
 impl Display for WaterLevel {
@@ -85,19 +90,19 @@ impl From<u16> for WaterLevel {
     }
 }
 
-/// Enum to represent different types of sensors
-#[derive(Debug)]
+/// Represents all supported sensor types and their current readings.
+#[derive(Debug, EnumIter)]
 pub enum Sensor {
-    WaterLevel(WaterLevel),
-    AirTemperature(u8),
-    AirHumidity(u8),
-    SoilMoisture(MoistureLevel),
-    BatteryVoltage(u16),
-    SoilMoistureRaw(SoilMoistureRawLevel),
-    PumpTrigger(bool),
+    WaterLevel(WaterLevel),                // Water at pot base
+    AirTemperature(u8),                    // Air temperature in °C
+    AirHumidity(u8),                       // Air humidity in %
+    SoilMoisture(MoistureLevel),           // Soil moisture (qualitative)
+    BatteryVoltage(u16),                   // Battery voltage in mV
+    SoilMoistureRaw(SoilMoistureRawLevel), // Raw soil moisture sensor value
+    PumpTrigger(bool),                     // Whether pump should be triggered
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct SoilMoistureRawLevel(u16);
 
 impl From<u16> for SoilMoistureRawLevel {
@@ -155,7 +160,7 @@ impl Sensor {
             Sensor::AirTemperature(_) => "Room temperature",
             Sensor::AirHumidity(_) => "Room humidity",
             Sensor::SoilMoisture(_) => "Soil moisture",
-            Sensor::WaterLevel(_) => "Water level",
+            Sensor::WaterLevel(_) => "Drainage water level",
             Sensor::BatteryVoltage(_) => "Battery voltage",
             Sensor::SoilMoistureRaw(_) => "Soil moisture (mV)",
             Sensor::PumpTrigger(_) => "Pump trigger",
