@@ -4,14 +4,18 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-esp-backtrace = { version = "0.15.1", features = [
+esp-backtrace = { version = "0.16.0", features = [
     "esp32s3",
     "exception-handler",
     "panic-handler",
     "println",
 ] }
-esp-hal = { version = "1.0.0-beta.0", features = ["esp32s3", "unstable"] }
-esp-alloc = { version = "0.7.0" }
+esp-hal = { version = "1.0.0-beta.1", features = [
+    "esp32s3",
+    "unstable",
+    "log-04",
+] }
+esp-alloc = { version = "0.8.0" }
 embassy-net = { version = "0.7.0", features = [
     "tcp",
     "udp",
@@ -19,19 +23,13 @@ embassy-net = { version = "0.7.0", features = [
     "dhcpv4",
     "dhcpv4-hostname",
 ] }
-
 mipidsi = { version = "0.9.0" }
-esp-wifi = { version = "0.13.0", features = [
-    "esp32s3",
-    "serde",
-    "wifi",
-    "log",
-] }
+esp-wifi = { version = "0.14.1", features = ["esp32s3", "serde", "wifi"] }
 heapless = { version = "0.8.0", default-features = false }
-esp-println = { version = "0.13.1", features = ["log", "esp32s3"] }
+esp-println = { version = "0.14.0", features = ["esp32s3", "log-04"] }
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-163840"] }
 embassy-time = { version = "0.4.0", features = [] }
-esp-hal-embassy = { version = "0.7.0", features = ["esp32s3"] }
+esp-hal-embassy = { version = "0.8.1", features = ["esp32s3", "log-04"] }
 rust-mqtt = { version = "0.3.0", default-features = false, features = [] }
 embedded-text = "0.7.2"
 embedded-graphics = { version = "0.8.1", features = [] }
@@ -41,10 +39,11 @@ serde_json = { version = "1.0.140", default-features = false, features = [
     "alloc",
 ] }
 embassy-futures = { version = "0.1.1", features = [] }
-embassy-sync = { version = "0.6.2", features = [] }
+embassy-sync = { version = "0.7.0", features = [] }
 static_cell = "2.1.0"
 nb = { version = "1.1.0", features = [] }
-
+log = "0.4.27"
+strum = { version = "0.27.1", default-features = false }
 
 [profile.dev]
 # Rust debug is too slow.
