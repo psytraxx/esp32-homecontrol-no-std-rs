@@ -156,7 +156,7 @@ pub enum Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::DisplayInterface(msg) => write!(f, "Display interface error: {}", msg),
+            Error::DisplayInterface(msg) => write!(f, "Display interface error: {msg}"),
             Error::InitError => write!(f, "Display initialization error"),
         }
     }

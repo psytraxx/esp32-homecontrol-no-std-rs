@@ -77,7 +77,7 @@ pub async fn update_task(
             }
         };
 
-        let pump_set_topic = format!("{}/pump/set", DEVICE_ID);
+        let pump_set_topic = format!("{DEVICE_ID}/pump/set");
 
         if let Err(e) = client.subscribe_to_topic(&pump_set_topic).await {
             println!(
@@ -256,7 +256,7 @@ async fn publish_sensor_data(
         let key = s.topic();
         let value = s.value();
         let message = json!({ "value": value }).to_string();
-        let topic_name = format!("{}/{}", DEVICE_ID, key);
+        let topic_name = format!("{DEVICE_ID}/{key}");
 
         println!(
             "Publishing to topic {}, message: {}",
@@ -281,7 +281,7 @@ async fn process_display(
     display: &mut Display<'static, Delay>,
     sensor_data: &SensorData,
 ) -> Result<(), Error> {
-    display.write_multiline(&format!("{}", sensor_data))?;
+    display.write_multiline(&format!("{sensor_data}"))?;
     Timer::after(Duration::from_secs(AWAKE_DURATION_SECONDS)).await;
     display.enable_powersave()?;
     Ok(())
@@ -346,8 +346,7 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     }
 
     let discovery_topic = format!(
-        "{}/{}/{}_{}/config",
-        HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_TOPIC, DEVICE_ID, topic
+        "{HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX}/{HOMEASSISTANT_SENSOR_TOPIC}/{DEVICE_ID}_{topic}/config"
     );
 
     (discovery_topic, payload.to_string())
@@ -361,8 +360,7 @@ fn get_pump_discovery(topic: &str) -> (String, String) {
     payload["payload_close"] = json!("CLOSE");
 
     let discovery_topic = format!(
-        "{}/{}/{}_{}/config",
-        HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_VALVE_TOPIC, DEVICE_ID, topic
+        "{HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX}/{HOMEASSISTANT_VALVE_TOPIC}/{DEVICE_ID}_{topic}/config"
     );
 
     (discovery_topic, payload.to_string())
@@ -394,10 +392,10 @@ impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::Port => write!(f, "Port error"),
-            Error::Dns(e) => write!(f, "DNS error: {:?}", e),
-            Error::Connection(e) => write!(f, "Connection error: {:?}", e),
-            Error::Broker(e) => write!(f, "Broker error: {:?}", e),
-            Error::Display(e) => write!(f, "Display error: {:?}", e),
+            Error::Dns(e) => write!(f, "DNS error: {e:?}"),
+            Error::Connection(e) => write!(f, "Connection error: {e:?}"),
+            Error::Broker(e) => write!(f, "Broker error: {e:?}"),
+            Error::Display(e) => write!(f, "Display error: {e:?}"),
         }
     }
 }
