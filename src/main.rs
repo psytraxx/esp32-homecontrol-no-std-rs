@@ -56,6 +56,8 @@ static mut BOOT_COUNT: u32 = 0;
 #[ram(rtc_fast)]
 static mut DISCOVERY_MESSAGES_SENT: bool = false;
 
+esp_bootloader_esp_idf::esp_app_desc!();
+
 #[main]
 async fn main(spawner: Spawner) {
     init_logger(log::LevelFilter::Info);
