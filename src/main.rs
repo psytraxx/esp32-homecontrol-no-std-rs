@@ -56,6 +56,8 @@ static mut BOOT_COUNT: u32 = 0;
 #[ram(rtc_fast)]
 static mut DISCOVERY_MESSAGES_SENT: bool = false;
 
+esp_bootloader_esp_idf::esp_app_desc!();
+
 #[main]
 async fn main(spawner: Spawner) {
     init_logger(log::LevelFilter::Info);
@@ -86,14 +88,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
     power_pin.set_high();
 
-    let stack = connect_to_wifi(
-        peripherals.WIFI,
-        timg1.timer0,
-        peripherals.RADIO_CLK,
-        peripherals.RNG,
-        spawner,
-    )
-    .await?;
+    let stack = connect_to_wifi(peripherals.WIFI, timg1.timer0, peripherals.RNG, spawner).await?;
 
     let display_peripherals = DisplayPeripherals {
         backlight: peripherals.GPIO38,
@@ -174,8 +169,8 @@ enum Error {
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            Error::Wifi(error) => write!(f, "Wifi error: {:?}", error),
-            Error::Display(error) => write!(f, "Display error: {}", error),
+            Error::Wifi(error) => write!(f, "Wifi error: {error:?}"),
+            Error::Display(error) => write!(f, "Display error: {error}"),
         }
     }
 }

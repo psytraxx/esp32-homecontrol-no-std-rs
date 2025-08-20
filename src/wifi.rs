@@ -25,14 +25,13 @@ pub static STOP_WIFI_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new()
 pub async fn connect_to_wifi(
     wifi: peripherals::WIFI<'static>,
     timer: esp_hal::timer::timg::Timer<'static>,
-    radio_clocks: peripherals::RADIO_CLK<'static>,
     rng: RNG<'static>,
     spawner: Spawner,
 ) -> Result<Stack<'static>, WifiError> {
     let mut rng = Rng::new(rng);
 
     static INIT: StaticCell<esp_wifi::EspWifiController<'static>> = StaticCell::new();
-    let init = INIT.init(esp_wifi::init(timer, rng, radio_clocks).unwrap());
+    let init = INIT.init(esp_wifi::init(timer, rng).unwrap());
 
     let (controller, interfaces) = esp_wifi::wifi::new(init, wifi).unwrap();
 

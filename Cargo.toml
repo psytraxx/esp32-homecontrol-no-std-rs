@@ -4,13 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-esp-backtrace = { version = "0.16.0", features = [
+esp-backtrace = { version = "0.17.0", features = [
     "esp32s3",
     "exception-handler",
     "panic-handler",
     "println",
 ] }
-esp-hal = { version = "1.0.0-beta.1", features = [
+esp-hal = { version = "1.0.0-rc.0", features = [
     "esp32s3",
     "unstable",
     "log-04",
@@ -24,26 +24,27 @@ embassy-net = { version = "0.7.0", features = [
     "dhcpv4-hostname",
 ] }
 mipidsi = { version = "0.9.0" }
-esp-wifi = { version = "0.14.1", features = ["esp32s3", "serde", "wifi"] }
+esp-wifi = { version = "0.15.0", features = ["esp32s3", "serde", "wifi"] }
 heapless = { version = "0.8.0", default-features = false }
-esp-println = { version = "0.14.0", features = ["esp32s3", "log-04"] }
+esp-println = { version = "0.15.0", features = ["esp32s3", "log-04"] }
 embassy-executor = { version = "0.7.0", features = ["task-arena-size-163840"] }
 embassy-time = { version = "0.4.0", features = [] }
-esp-hal-embassy = { version = "0.8.1", features = ["esp32s3", "log-04"] }
+esp-hal-embassy = { version = "0.9.0", features = ["esp32s3", "log-04"] }
 rust-mqtt = { version = "0.3.0", default-features = false, features = [] }
 embedded-text = "0.7.2"
 embedded-graphics = { version = "0.8.1", features = [] }
 embedded-hal = { version = "1.0.0", features = [] }
 serde = { version = "1.0.219", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.140", default-features = false, features = [
+serde_json = { version = "1.0.143", default-features = false, features = [
     "alloc",
 ] }
 embassy-futures = { version = "0.1.1", features = [] }
-embassy-sync = { version = "0.7.0", features = [] }
-static_cell = "2.1.0"
+embassy-sync = { version = "0.7.1", features = [] }
+static_cell = "2.1.1"
 nb = { version = "1.1.0", features = [] }
 log = "0.4.27"
-strum = { version = "0.27.1", default-features = false }
+strum = { version = "0.27.2", default-features = false }
+esp-bootloader-esp-idf = { version = "0.2.0", features = ["log-04", "esp32s3"] }
 
 [profile.dev]
 # Rust debug is too slow.
