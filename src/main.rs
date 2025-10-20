@@ -1,5 +1,10 @@
 #![no_std]
 #![no_main]
+#![deny(
+    clippy::mem_forget,
+    reason = "mem::forget is generally not safe to do with esp_hal types, especially those \
+    holding buffers for the duration of a data transfer."
+)]
 
 use alloc::format;
 use config::{AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS};
@@ -17,12 +22,14 @@ use esp_backtrace as _;
 use esp_hal::{
     gpio::{Level, Output, OutputConfig},
     ram,
+    rng::Rng,
     system::software_reset,
     timer::timg::TimerGroup,
+    Config,
 };
-use esp_hal_embassy::main;
 use esp_println::{logger::init_logger, println};
-use esp_wifi::wifi::WifiError;
+use esp_radio::wifi::WifiError;
+use esp_rtos::main;
 use relay_task::relay_task;
 use sensors_task::{sensor_task, SensorPeripherals};
 use sleep::enter_deep;
@@ -50,10 +57,10 @@ static ENABLE_PUMP: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 ///
 /// This is a statically allocated variable and it is placed in the RTC Fast
 /// memory, which survives deep sleep.
-#[ram(rtc_fast)]
+#[ram(unstable(rtc_fast))]
 static mut BOOT_COUNT: u32 = 0;
 
-#[ram(rtc_fast)]
+#[ram(unstable(rtc_fast))]
 static mut DISCOVERY_MESSAGES_SENT: bool = false;
 
 esp_bootloader_esp_idf::esp_app_desc!();
@@ -75,20 +82,21 @@ async fn main(spawner: Spawner) {
 }
 
 async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
-    let peripherals = esp_hal::init(esp_hal::Config::default());
+    let peripherals = esp_hal::init(Config::default());
 
-    heap_allocator!(size: 72 * 1024);
+    heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 73744);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let timg1 = TimerGroup::new(peripherals.TIMG1);
-
-    esp_hal_embassy::init(timg0.timer0);
+    esp_rtos::start(timg0.timer0);
 
     // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
     power_pin.set_high();
 
-    let stack = connect_to_wifi(peripherals.WIFI, timg1.timer0, peripherals.RNG, spawner).await?;
+    let rng = Rng::new();
+    let seed = (rng.random() as u64) << 32 | rng.random() as u64;
+
+    let stack = connect_to_wifi(peripherals.WIFI, seed, spawner).await?;
 
     let display_peripherals = DisplayPeripherals {
         backlight: peripherals.GPIO38,

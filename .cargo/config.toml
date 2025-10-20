@@ -10,8 +10,5 @@ rustflags = ["-C", "link-arg=-nostartfiles"]
 
 target = "xtensa-esp32s3-none-elf"
 
-[cargo-new]
-edition = "2024"
-
 [unstable]
 build-std = ["alloc", "core"]
