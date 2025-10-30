@@ -841,7 +841,6 @@ dependencies = [
 name = "esp32-homecontrol"
 version = "0.1.0"
 dependencies = [
- "critical-section",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
@@ -867,7 +866,6 @@ dependencies = [
  "rust-mqtt",
  "serde",
  "serde_json",
- "smoltcp",
  "static_cell",
  "strum",
 ]
@@ -1481,7 +1479,6 @@ dependencies = [
  "byteorder",
  "cfg-if",
  "heapless 0.8.0",
- "log",
  "managed",
 ]
 

@@ -45,21 +45,7 @@ esp-radio = { version = "0.17.0", features = [
     "unstable",
     "wifi",
 ] }
-smoltcp = { version = "0.12.0", default-features = false, features = [
-    "log",
-    "medium-ethernet",
-    "multicast",
-    "proto-dhcpv4",
-    "proto-dns",
-    "proto-ipv4",
-    "socket-dns",
-    "socket-icmp",
-    "socket-raw",
-    "socket-tcp",
-    "socket-udp",
-] }
 
-critical-section = "1.2.0"
 static_cell = "2.1.1"
 
 mipidsi = { version = "0.9.0" }
