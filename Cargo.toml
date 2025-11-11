@@ -4,13 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-esp-hal = { version = "=1.0.0-rc.1", features = [
-    "esp32s3",
-    "log-04",
-    "unstable",
-] }
+esp-hal = { version = "1.0.0", features = ["esp32s3", "log-04", "unstable"] }
 
-esp-rtos = { version = "0.1.1", features = [
+esp-rtos = { version = "0.2.0", features = [
     "embassy",
     "esp-alloc",
     "esp-radio",
@@ -18,8 +14,8 @@ esp-rtos = { version = "0.1.1", features = [
     "log-04",
 ] }
 
-esp-bootloader-esp-idf = { version = "0.3.0", features = ["esp32s3"] }
-log = "0.4.28"
+esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32s3", "log-04"] }
+log = "0.4.27"
 
 embassy-net = { version = "0.7.1", features = [
     "dhcpv4",
@@ -32,25 +28,28 @@ embassy-net = { version = "0.7.1", features = [
 embedded-io = "0.7.1"
 embedded-io-async = "0.7.0"
 esp-alloc = "0.9.0"
-esp-backtrace = { version = "0.18.0", features = [
+esp-backtrace = { version = "0.18.1", features = [
     "esp32s3",
     "panic-handler",
     "println",
 ] }
-esp-println = { version = "0.16.0", features = ["esp32s3", "log-04"] }
+esp-println = { version = "0.16.1", features = ["esp32s3", "log-04"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
 embassy-executor = { version = "0.9.1", features = ["log"] }
 embassy-time = { version = "0.5.0", features = ["log"] }
-esp-radio = { version = "0.16.0", features = [
+esp-radio = { version = "0.17.0", features = [
     "esp-alloc",
     "esp32s3",
     "log-04",
+    "smoltcp",
     "unstable",
     "wifi",
 ] }
 
+static_cell = "2.1.1"
+
 mipidsi = { version = "0.9.0" }
-heapless = { version = "0.8.0", default-features = false }
+heapless = { version = "0.9.1", default-features = false }
 rust-mqtt = { version = "0.3.0", default-features = false, features = [] }
 embedded-text = "0.7.3"
 embedded-graphics = { version = "0.8.1", features = [] }
@@ -61,9 +60,9 @@ serde_json = { version = "1.0.145", default-features = false, features = [
 ] }
 embassy-futures = { version = "0.1.2", features = [] }
 embassy-sync = { version = "0.7.2", features = [] }
-static_cell = "2.1.1"
 nb = { version = "1.1.0", features = [] }
 strum = { version = "0.27.2", default-features = false }
+esp-phy = { version = "0.1.1", features = ["esp32s3", "log-04"] }
 
 [profile.dev]
 # Rust debug is too slow.
