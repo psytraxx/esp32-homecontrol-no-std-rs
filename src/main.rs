@@ -31,6 +31,7 @@ use esp_println::{logger::init_logger, println};
 use esp_radio::wifi::WifiError;
 use esp_rtos::main;
 use relay_task::relay_task;
+use rtc_memory::RtcCell;
 use sensors_task::{sensor_task, SensorPeripherals};
 use sleep::enter_deep;
 use static_cell::StaticCell;
@@ -44,6 +45,7 @@ mod dht11;
 mod display;
 mod domain;
 mod relay_task;
+mod rtc_memory;
 mod sensors_task;
 mod sleep;
 mod update_task;
@@ -56,12 +58,16 @@ static ENABLE_PUMP: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 /// Stored boot count between deep sleep cycles
 ///
 /// This is a statically allocated variable and it is placed in the RTC Fast
-/// memory, which survives deep sleep.
+/// memory, which survives deep sleep. Uses RtcCell for safe interior mutability.
 #[ram(unstable(rtc_fast))]
-static mut BOOT_COUNT: u32 = 0;
+pub(crate) static BOOT_COUNT: RtcCell<u32> = RtcCell::new(0);
 
+/// Tracks whether MQTT discovery messages have been sent
+///
+/// Placed in RTC Fast memory to prevent re-sending on every wake.
+/// Uses RtcCell for safe interior mutability.
 #[ram(unstable(rtc_fast))]
-static mut DISCOVERY_MESSAGES_SENT: bool = false;
+pub(crate) static DISCOVERY_MESSAGES_SENT: RtcCell<bool> = RtcCell::new(false);
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
@@ -69,11 +75,9 @@ esp_bootloader_esp_idf::esp_app_desc!();
 async fn main(spawner: Spawner) {
     init_logger(log::LevelFilter::Info);
 
-    let boot_count = unsafe { BOOT_COUNT };
-    println!("Current boot count = {}", &boot_count);
-    unsafe {
-        BOOT_COUNT = boot_count + 1;
-    }
+    let boot_count = BOOT_COUNT.get();
+    println!("Current boot count = {}", boot_count);
+    BOOT_COUNT.set(boot_count + 1);
 
     if let Err(error) = main_fallible(spawner, boot_count).await {
         println!("Error while running firmware: {:?}", error);

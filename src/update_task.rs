@@ -195,8 +195,7 @@ async fn handle_sensor_data(
 }
 
 async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
-    let discovery_messages_sent = unsafe { DISCOVERY_MESSAGES_SENT };
-    if !discovery_messages_sent {
+    if !DISCOVERY_MESSAGES_SENT.get() {
         println!("First run, sending discovery messages");
         for s in Sensor::iter() {
             let (discovery_topic, message) = get_sensor_discovery(&s);
@@ -221,9 +220,7 @@ async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(),
             )
             .await?;
 
-        unsafe {
-            DISCOVERY_MESSAGES_SENT = true;
-        }
+        DISCOVERY_MESSAGES_SENT.set(true);
     } else {
         println!("Discovery messages already sent");
     }

@@ -334,8 +334,8 @@ fn build_sensor_data(
     }
 
     // Add pump trigger logic
-    let boot_count = unsafe { BOOT_COUNT };
-    let pump_enabled = boot_count % PUMP_TRIGGER_INTERVAL == 0;
+    let boot_count = BOOT_COUNT.get();
+    let pump_enabled = boot_count.is_multiple_of(PUMP_TRIGGER_INTERVAL);
     if sensor_data
         .data
         .push(Sensor::PumpTrigger(pump_enabled))

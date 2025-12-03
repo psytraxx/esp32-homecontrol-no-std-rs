@@ -15,7 +15,7 @@ esp-rtos = { version = "0.2.0", features = [
 ] }
 
 esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32s3", "log-04"] }
-log = "0.4.27"
+log = "0.4.29"
 
 embassy-net = { version = "0.7.1", features = [
     "dhcpv4",
@@ -49,7 +49,7 @@ esp-radio = { version = "0.17.0", features = [
 static_cell = "2.1.1"
 
 mipidsi = { version = "0.9.0" }
-heapless = { version = "0.9.1", default-features = false }
+heapless = { version = "0.9.2", default-features = false }
 rust-mqtt = { version = "0.3.0", default-features = false, features = [] }
 embedded-text = "0.7.3"
 embedded-graphics = { version = "0.8.1", features = [] }
@@ -63,6 +63,7 @@ embassy-sync = { version = "0.7.2", features = [] }
 nb = { version = "1.1.0", features = [] }
 strum = { version = "0.27.2", default-features = false }
 esp-phy = { version = "0.1.1", features = ["esp32s3", "log-04"] }
+critical-section = "1.2.0"
 
 [profile.dev]
 # Rust debug is too slow.
