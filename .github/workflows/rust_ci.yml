@@ -33,6 +33,8 @@ jobs:
         with:
           default: true
           buildtargets: esp32s3
+          # see https://github.com/esp-rs/rust-build/releases for available versions
+          version: "1.92.0"
           ldproxy: false
       - name: Enable caching
         uses: Swatinem/rust-cache@v2
