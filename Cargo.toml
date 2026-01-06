@@ -2,7 +2,6 @@
 name = "esp32-homecontrol"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.92.0"
 
 [dependencies]
 esp-hal = { version = "1.0.0", features = ["esp32s3", "log-04", "unstable"] }
@@ -56,7 +55,7 @@ embedded-text = "0.7.3"
 embedded-graphics = { version = "0.8.1", features = [] }
 embedded-hal = { version = "1.0.0", features = [] }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.145", default-features = false, features = [
+serde_json = { version = "1.0.149", default-features = false, features = [
     "alloc",
 ] }
 embassy-futures = { version = "0.1.2", features = [] }

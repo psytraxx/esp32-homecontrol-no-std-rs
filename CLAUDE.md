@@ -11,7 +11,7 @@ ESP32-based plant watering system for the LilyGO T-Display-S3 board. Uses no-std
 ### Setup Environment
 ```bash
 # Install ESP Rust toolchain (one-time setup or )
-espup install --toolchain-version 1.92.0
+espup install
 . $HOME/export-esp.sh
 
 # Copy environment template and configure credentials
