@@ -156,6 +156,25 @@ cp .env.dist .env
 
 ---
 
+## Development Tools
+
+### Validate Agent Skills
+
+To validate the `.claude/skills` directory structure:
+
+```sh
+# Install skills-ref validator (one-time)
+cd /tmp
+git clone https://github.com/agentskills/agentskills.git
+cd agentskills/skills-ref
+pipx install .
+
+# Validate the skill
+skills-ref validate .claude/skills/esp32-rust-embedded
+```
+
+---
+
 ## Usage
 
 To flash the firmware to your ESP32 device, run:
@@ -222,24 +241,3 @@ cargo run --release
 ---
 
 This documentation is curated to help you get started with various functionalities, libraries, and examples for ESP32 projects using Rust.
-
-## QEMU Testing (Optional)
-
-To test the firmware in QEMU emulator:
-
-1. **Build the release binary:**
-   ```sh
-   cargo build --release
-   ```
-
-2. **Create a merged image:**
-   ```sh
-   espflash save-image --chip esp32s3 --merge target/xtensa-esp32s3-none-elf/release/esp32-homecontrol image.bin
-   ```
-
-3. **Run in QEMU:**
-   ```sh
-   ../../Downloads/qemu/bin/qemu-system-xtensa --nographic -machine esp32s3 -drive file=image.bin,if=mtd,format=raw -m 4M
-   ```
-
-**Note:** Make sure you have QEMU with Xtensa support installed and adjust the QEMU path according to your installation.

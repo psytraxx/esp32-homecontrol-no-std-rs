@@ -1,6 +1,7 @@
 ---
 name: esp32-rust-embedded
-description: Expert embedded Rust development for ESP32 using no-std, Embassy async framework, and the ESP-RS ecosystem. Use for building, debugging, adding features, sensor integration, power management, and WiFi/MQTT networking on ESP32 microcontrollers.
+description: Expert embedded Rust development for ESP32 microcontrollers using no-std, Embassy async framework, and the ESP-RS ecosystem (esp-hal, esp-rtos, esp-radio). Use when building, debugging, flashing, or adding features to ESP32 projects. Covers sensor integration (ADC, GPIO, I2C, SPI), power management (deep sleep, RTC memory), WiFi networking, MQTT clients, display drivers, async task patterns, memory allocation, error handling, and dependency management. Ideal for LilyGO boards, Espressif chips (ESP32, ESP32-S3, ESP32-C3), and any no-std Xtensa/RISC-V embedded development.
+compatibility: Requires ESP Rust toolchain (espup), cargo-espflash, and ESP32/ESP32-S3/ESP32-C3 hardware. Designed for Claude Code and similar AI coding assistants.
 ---
 
 # ESP32 Embedded Rust Specialist
