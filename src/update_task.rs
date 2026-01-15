@@ -11,14 +11,17 @@ use embassy_net::{
 };
 use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
 use embassy_time::{Delay, Duration, Timer};
-use esp_println::println;
+use log::{error, info, warn};
 use rust_mqtt::{
+    buffer::AllocBuffer,
     client::{
-        client::MqttClient,
-        client_config::{ClientConfig, MqttVersion::MQTTv5},
+        event::Event,
+        options::{ConnectOptions, PublicationOptions, RetainHandling, SubscriptionOptions},
+        Client, MqttError,
     },
-    packet::v5::{publish_packet::QualityOfService, reason_codes::ReasonCode},
-    utils::rng_generator::CountingRng,
+    config::{KeepAlive, SessionExpiryInterval},
+    types::{MqttBinary, MqttString, QoS, ReasonCode, TopicName},
+    Bytes,
 };
 use serde_json::{json, Value};
 use static_cell::StaticCell;
@@ -35,13 +38,11 @@ use crate::{
 };
 
 const BUFFER_SIZE: usize = 4096;
-const BUFFER_SIZE_CLIENT: usize = 1024;
 
 struct MqttResources {
     rx_buffer: [u8; BUFFER_SIZE],
     tx_buffer: [u8; BUFFER_SIZE],
-    client_rx_buffer: [u8; BUFFER_SIZE_CLIENT],
-    client_tx_buffer: [u8; BUFFER_SIZE_CLIENT],
+    alloc_buffer: AllocBuffer,
 }
 
 static RESOURCES: StaticCell<MqttResources> = StaticCell::new();
@@ -60,8 +61,7 @@ pub async fn update_task(
     let resources = MqttResources {
         rx_buffer: [0u8; BUFFER_SIZE],
         tx_buffer: [0u8; BUFFER_SIZE],
-        client_rx_buffer: [0u8; BUFFER_SIZE_CLIENT],
-        client_tx_buffer: [0u8; BUFFER_SIZE_CLIENT],
+        alloc_buffer: AllocBuffer,
     };
 
     let resources = RESOURCES.init(resources);
@@ -71,44 +71,57 @@ pub async fn update_task(
         let mut client = match initialize_mqtt_client(stack, resources).await {
             Ok(client) => client,
             Err(e) => {
-                println!("Error initializing MQTT client: {:?}. Retrying in 5s...", e);
+                error!("Error initializing MQTT client: {:?}. Retrying in 5s...", e);
                 Timer::after(Duration::from_secs(5)).await;
                 continue 'reconnect; // Retry connection
             }
         };
 
         let pump_set_topic = format!("{DEVICE_ID}/pump/set");
+        let topic =
+            unsafe { TopicName::new_unchecked(MqttString::from_slice(&pump_set_topic).unwrap()) };
 
-        if let Err(e) = client.subscribe_to_topic(&pump_set_topic).await {
-            println!(
-                "Error subscribing to pump command topic: {}. Retrying connection...",
+        let sub_options = SubscriptionOptions {
+            retain_handling: RetainHandling::SendIfNotSubscribedBefore,
+            retain_as_published: true,
+            no_local: false,
+            qos: QoS::AtMostOnce,
+        };
+
+        if let Err(e) = client.subscribe(topic.into(), sub_options).await {
+            error!(
+                "Error subscribing to pump command topic: {:?}. Retrying connection...",
                 e
             );
             Timer::after(Duration::from_secs(5)).await;
             continue 'reconnect; // Retry connection
         }
 
-        println!("Subscribed to pump command topic: {}", pump_set_topic);
+        info!("Subscribed to pump command topic: {}", pump_set_topic);
 
         // Inner loop for processing events while connected
         loop {
             let mut action_to_perform = MqttAction::None;
 
-            match select(receiver.receive(), client.receive_message()).await {
+            match select(receiver.receive(), client.poll()).await {
                 Either::First(sensor_data) => {
                     if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await
                     {
-                        println!("Error handling sensor data: {:?}. Reconnecting...", e);
+                        error!("Error handling sensor data: {:?}. Reconnecting...", e);
                         continue 'reconnect; // Break inner loop, go to outer loop for reconnect
                     }
                 }
                 Either::Second(result) => match result {
-                    Ok((topic, data)) => {
-                        action_to_perform =
-                            process_received_mqtt_message(topic, data, &pump_set_topic);
+                    Ok(Event::Publish(e)) => {
+                        action_to_perform = process_received_mqtt_message(
+                            e.topic.as_ref(),
+                            e.message.as_ref(),
+                            &pump_set_topic,
+                        );
                     }
+                    Ok(e) => info!("Received event {:?}", e),
                     Err(e) => {
-                        println!("Error receiving MQTT message: {}. Reconnecting...", e);
+                        error!("Error receiving MQTT message: {:?}. Reconnecting...", e);
                         continue 'reconnect; // Break inner loop, go to outer loop for reconnect
                     }
                 },
@@ -116,15 +129,23 @@ pub async fn update_task(
 
             match action_to_perform {
                 MqttAction::ClearRetained(topic_to_clear) => {
-                    println!(
+                    info!(
                         "Executing clear of retained message on topic: {}",
                         topic_to_clear
                     );
-                    if let Err(e) = client
-                        .send_message(&topic_to_clear, &[], QualityOfService::QoS0, true)
-                        .await
-                    {
-                        println!("Error clearing retained message: {}. Reconnecting...", e);
+
+                    let options = PublicationOptions {
+                        retain: true,
+                        qos: QoS::AtMostOnce,
+                        topic: unsafe {
+                            TopicName::new_unchecked(
+                                MqttString::from_slice(&topic_to_clear).unwrap(),
+                            )
+                        },
+                    };
+
+                    if let Err(e) = client.publish(&options, Bytes::Borrowed(&[])).await {
+                        error!("Error clearing retained message: {:?}. Reconnecting...", e);
                         continue 'reconnect; // Break inner loop, go to outer loop for reconnect
                     }
                 }
@@ -134,7 +155,7 @@ pub async fn update_task(
     }
 }
 
-type MqttClientImpl<'a> = MqttClient<'a, TcpSocket<'a>, 5, CountingRng>;
+type MqttClientImpl<'a> = Client<'a, TcpSocket<'a>, AllocBuffer, 1, 1, 1>;
 
 async fn initialize_mqtt_client<'a>(
     stack: Stack<'static>,
@@ -150,29 +171,43 @@ async fn initialize_mqtt_client<'a>(
     let port = env!("MQTT_PORT").parse()?;
     let socket_addr = (host_addr, port);
 
-    println!("Connecting to MQTT server...");
+    info!("Connecting to MQTT server...");
     socket.connect(socket_addr).await?;
-    println!("Connected to MQTT server");
+    info!("Connected to MQTT server");
 
-    println!("Initializing MQTT connection");
-    let mut mqtt_config: ClientConfig<5, CountingRng> =
-        ClientConfig::new(MQTTv5, CountingRng(20000));
-    mqtt_config.add_username(env!("MQTT_USERNAME"));
-    mqtt_config.add_password(env!("MQTT_PASSWORD"));
-    mqtt_config.add_client_id(DEVICE_ID);
+    let options = ConnectOptions {
+        user_name: Some(MqttString::try_from(env!("MQTT_USERNAME")).unwrap()),
+        password: Some(MqttBinary::try_from(env!("MQTT_PASSWORD")).unwrap()),
+        clean_start: false,
+        keep_alive: KeepAlive::Seconds(3),
+        session_expiry_interval: SessionExpiryInterval::Seconds(5),
+        will: None,
+    };
 
-    let mut client = MqttClient::new(
-        socket,
-        &mut resources.client_tx_buffer,
-        BUFFER_SIZE_CLIENT,
-        &mut resources.client_rx_buffer,
-        BUFFER_SIZE_CLIENT,
-        mqtt_config,
-    );
+    let mut client = Client::<'_, _, _, 1, 1, 1>::new(&mut resources.alloc_buffer);
 
-    client.connect_to_broker().await?;
+    match client
+        .connect(
+            socket,
+            &options,
+            Some(MqttString::try_from(DEVICE_ID).unwrap()),
+        )
+        .await
+    {
+        Ok(c) => {
+            info!("Connected to server {:?}", c);
+            info!("{:?}", client.client_config());
+            info!("{:?}", client.server_config());
+            info!("{:?}", client.shared_config());
+            info!("{:?}", client.session());
+        }
+        Err(e) => {
+            error!("Failed to connect to server: {:?}", e);
+            return Err(e.into());
+        }
+    };
 
-    println!("MQTT Broker connected");
+    info!("MQTT Broker connected");
 
     Ok(client)
 }
@@ -187,7 +222,7 @@ async fn handle_sensor_data(
     if sensor_data.publish {
         publish_sensor_data(client, &sensor_data).await?;
     } else {
-        println!("skipping publishing to MQTT");
+        info!("skipping publishing to MQTT");
     }
 
     process_display(display, &sensor_data).await?;
@@ -196,33 +231,42 @@ async fn handle_sensor_data(
 
 async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
     if !DISCOVERY_MESSAGES_SENT.get() {
-        println!("First run, sending discovery messages");
+        info!("First run, sending discovery messages");
+
         for s in Sensor::iter() {
             let (discovery_topic, message) = get_sensor_discovery(&s);
+
+            let options = PublicationOptions {
+                retain: true,
+                qos: QoS::AtMostOnce,
+                topic: unsafe {
+                    TopicName::new_unchecked(MqttString::from_slice(&discovery_topic).unwrap())
+                },
+            };
+
             client
-                .send_message(
-                    &discovery_topic,
-                    message.as_bytes(),
-                    QualityOfService::QoS0,
-                    true,
-                )
+                .publish(&options, Bytes::Borrowed(message.as_bytes()))
                 .await?;
-            println!("Discovery message sent for sensor: {}", s.name());
+            info!("Discovery message sent for sensor: {}", s.name());
         }
 
         let (discovery_topic, message) = get_pump_discovery("pump");
+
+        let options = PublicationOptions {
+            retain: true,
+            qos: QoS::AtMostOnce,
+            topic: unsafe {
+                TopicName::new_unchecked(MqttString::from_slice(&discovery_topic).unwrap())
+            },
+        };
+
         client
-            .send_message(
-                &discovery_topic,
-                message.as_bytes(),
-                QualityOfService::QoS0,
-                true,
-            )
+            .publish(&options, Bytes::Borrowed(message.as_bytes()))
             .await?;
 
         DISCOVERY_MESSAGES_SENT.set(true);
     } else {
-        println!("Discovery messages already sent");
+        info!("Discovery messages already sent");
     }
     Ok(())
 }
@@ -241,7 +285,7 @@ async fn publish_sensor_data(
         if let Sensor::PumpTrigger(enabled) = entry {
             let enabled = *enabled;
             if allow_enable_pump {
-                println!("Pump trigger value: {} - updating pump state", enabled);
+                info!("Pump trigger value: {} - updating pump state", enabled);
                 update_pump_state(enabled);
             } else {
                 update_pump_state(false);
@@ -255,19 +299,22 @@ async fn publish_sensor_data(
         let message = json!({ "value": value }).to_string();
         let topic_name = format!("{DEVICE_ID}/{key}");
 
-        println!(
+        info!(
             "Publishing to topic {}, message: {}",
             topic_name.as_str(),
             message.as_str()
         );
 
+        let options = PublicationOptions {
+            retain: false,
+            qos: QoS::AtMostOnce,
+            topic: unsafe {
+                TopicName::new_unchecked(MqttString::from_slice(&topic_name).unwrap())
+            },
+        };
+
         client
-            .send_message(
-                &topic_name,
-                message.as_bytes(),
-                QualityOfService::QoS0,
-                false,
-            )
+            .publish(&options, Bytes::Borrowed(message.as_bytes()))
             .await?;
     }
 
@@ -291,22 +338,22 @@ fn process_received_mqtt_message(topic: &str, data: &[u8], pump_set_topic: &str)
     if let Some(message) = msg {
         if topic == pump_set_topic {
             if message.is_empty() {
-                println!("Received empty message on '{}', likely the cleared retained message. Ignoring.", topic);
+                info!("Received empty message on '{}', likely the cleared retained message. Ignoring.", topic);
             } else {
                 let state = message == "OPEN";
-                println!("Pump command received on '{}'. State: {}", topic, state);
+                info!("Pump command received on '{}'. State: {}", topic, state);
                 update_pump_state(state);
 
                 if state {
-                    println!("Scheduling clear of retained message on topic: {}", topic);
+                    info!("Scheduling clear of retained message on topic: {}", topic);
                     action = MqttAction::ClearRetained(topic.to_string());
                 }
             }
         } else {
-            println!("Message on unhandled topic: {}", topic);
+            warn!("Message on unhandled topic: {}", topic);
         }
     } else {
-        println!("Invalid UTF-8 message received on topic {}", topic);
+        warn!("Invalid UTF-8 message received on topic {}", topic);
     }
     action
 }
@@ -383,6 +430,7 @@ enum Error {
     Connection(ConnectError),
     Broker(ReasonCode),
     Display(display::Error),
+    Mqtt,
 }
 
 impl core::fmt::Display for Error {
@@ -393,6 +441,7 @@ impl core::fmt::Display for Error {
             Error::Connection(e) => write!(f, "Connection error: {e:?}"),
             Error::Broker(e) => write!(f, "Broker error: {e:?}"),
             Error::Display(e) => write!(f, "Display error: {e:?}"),
+            Error::Mqtt => write!(f, "MQTT error"),
         }
     }
 }
@@ -424,5 +473,11 @@ impl From<ReasonCode> for Error {
 impl From<display::Error> for Error {
     fn from(error: display::Error) -> Self {
         Self::Display(error)
+    }
+}
+
+impl<'a> From<MqttError<'a>> for Error {
+    fn from(_error: MqttError<'a>) -> Self {
+        Self::Mqtt
     }
 }

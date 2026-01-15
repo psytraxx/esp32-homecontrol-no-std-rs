@@ -9,8 +9,8 @@ use esp_hal::{
     peripherals::{ADC1, ADC2, GPIO1, GPIO11, GPIO12, GPIO16, GPIO21, GPIO4},
     Blocking,
 };
-use esp_println::println;
 use heapless::Vec;
+use log::{error, info};
 
 use crate::{
     config::AWAKE_DURATION_SECONDS,
@@ -56,7 +56,7 @@ pub async fn sensor_task(
     sender: Sender<'static, NoopRawMutex, SensorData, 3>,
     p: SensorPeripherals,
 ) {
-    println!("Initializing sensor task");
+    info!("Initializing sensor task");
 
     let mut hardware = initialize_hardware(p).await;
 
@@ -118,7 +118,7 @@ async fn collect_all_sensor_data(hardware: &mut SensorHardware<'static>) -> Sens
     let mut water_level_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
 
     for i in 0..SENSOR_SAMPLE_COUNT {
-        println!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
+        info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
 
         // Read DHT11 (temperature & humidity)
         if let Some(messurement) = read_dht11_sensor(&mut hardware.dht11_pin).await {
@@ -126,10 +126,10 @@ async fn collect_all_sensor_data(hardware: &mut SensorHardware<'static>) -> Sens
                 .push(messurement.temperature)
                 .is_err()
             {
-                println!("Failed to push AirTemperature to sensor_data");
+                error!("Failed to push AirTemperature to sensor_data");
             }
             if air_humidity_samples.push(messurement.humidity).is_err() {
-                println!("Failed to push AirHumidity to sensor_data");
+                error!("Failed to push AirHumidity to sensor_data");
             }
         }
 
@@ -142,7 +142,7 @@ async fn collect_all_sensor_data(hardware: &mut SensorHardware<'static>) -> Sens
         .await
         {
             if soil_moisture_samples.push(moisture).is_err() {
-                println!("Failed to push SoilMoisture to sensor_data");
+                error!("Failed to push SoilMoisture to sensor_data");
             }
         }
 
@@ -155,7 +155,7 @@ async fn collect_all_sensor_data(hardware: &mut SensorHardware<'static>) -> Sens
         .await
         {
             if water_level_samples.push(water_level).is_err() {
-                println!("Failed to push WaterLevel to sensor_data");
+                error!("Failed to push WaterLevel to sensor_data");
             }
         }
 
@@ -164,7 +164,7 @@ async fn collect_all_sensor_data(hardware: &mut SensorHardware<'static>) -> Sens
             read_battery_voltage(&mut hardware.adc1, &mut hardware.battery_pin).await
         {
             if battery_voltage_samples.push(battery_voltage).is_err() {
-                println!("Failed to push BatteryVoltage to sensor_data");
+                error!("Failed to push BatteryVoltage to sensor_data");
             }
         }
     }
@@ -224,7 +224,7 @@ async fn read_battery_voltage<'a>(
     if value < USB_CHARGING_VOLTAGE {
         Some(value)
     } else {
-        println!(
+        info!(
             "Battery voltage too high - looks we are charging on USB: {}mV",
             value
         );
@@ -247,7 +247,7 @@ where
     match nb::block!(adc.read_oneshot(pin)) {
         Ok(value) => Some(value),
         Err(e) => {
-            println!("Error reading sensor: {:?}", &e);
+            error!("Error reading sensor: {:?}", &e);
             None
         }
     }
@@ -265,16 +265,16 @@ fn build_sensor_data(
 
     // Process air humidity
     if let Some(avg_air_humidity) = calculate_average(&mut air_humidity_samples) {
-        println!("Air humidity: {}%", avg_air_humidity);
+        info!("Air humidity: {}%", avg_air_humidity);
         if sensor_data
             .data
             .push(Sensor::AirHumidity(avg_air_humidity))
             .is_err()
         {
-            println!("Failed to push AirHumidity to sensor_data");
+            error!("Failed to push AirHumidity to sensor_data");
         }
     } else {
-        println!(
+        error!(
             "Unable to generate average value of air humidity - we had {} samples",
             air_humidity_samples.len()
         );
@@ -282,16 +282,16 @@ fn build_sensor_data(
 
     // Process air temperature
     if let Some(avg_air_temperature) = calculate_average(&mut air_temperature_samples) {
-        println!("Air temperature: {}°C", avg_air_temperature);
+        info!("Air temperature: {}°C", avg_air_temperature);
         if sensor_data
             .data
             .push(Sensor::AirTemperature(avg_air_temperature))
             .is_err()
         {
-            println!("Failed to push AirTemperature to sensor_data");
+            error!("Failed to push AirTemperature to sensor_data");
         }
     } else {
-        println!(
+        error!(
             "Unable to generate average value of air temperature, we had {} samples",
             air_temperature_samples.len()
         );
@@ -300,37 +300,37 @@ fn build_sensor_data(
     // Process water level
     if let Some(avg_water_level) = calculate_average(&mut water_level_samples) {
         let waterlevel: WaterLevel = avg_water_level.into();
-        println!("Pot base water level: {}", waterlevel);
+        info!("Pot base water level: {}", waterlevel);
         if sensor_data
             .data
             .push(Sensor::WaterLevel(avg_water_level.into()))
             .is_err()
         {
-            println!("Failed to push WaterLevel to sensor_data");
+            error!("Failed to push WaterLevel to sensor_data");
         }
     } else {
-        println!("Unable to generate average value of water level");
+        error!("Unable to generate average value of water level");
     }
 
     // Process soil moisture
     if let Some(avg_soil_moisture) = calculate_average(&mut soil_moisture_samples) {
-        println!("Raw Moisture: {}", avg_soil_moisture);
+        info!("Raw Moisture: {}", avg_soil_moisture);
         if sensor_data
             .data
             .push(Sensor::SoilMoistureRaw(avg_soil_moisture.into()))
             .is_err()
         {
-            println!("Failed to push SoilMoistureRaw to sensor_data");
+            error!("Failed to push SoilMoistureRaw to sensor_data");
         }
         if sensor_data
             .data
             .push(Sensor::SoilMoisture(avg_soil_moisture.into()))
             .is_err()
         {
-            println!("Failed to push SoilMoisture to sensor_data");
+            error!("Failed to push SoilMoisture to sensor_data");
         }
     } else {
-        println!("Unable to generate average value of soil moisture");
+        error!("Unable to generate average value of soil moisture");
     }
 
     // Add pump trigger logic
@@ -341,18 +341,18 @@ fn build_sensor_data(
         .push(Sensor::PumpTrigger(pump_enabled))
         .is_err()
     {
-        println!("Failed to push PumpTrigger to sensor_data");
+        error!("Failed to push PumpTrigger to sensor_data");
     }
 
     // Process battery voltage
     if let Some(avg_battery_voltage) = calculate_average(&mut battery_voltage_samples) {
-        println!("Battery voltage: {}mV", avg_battery_voltage);
+        info!("Battery voltage: {}mV", avg_battery_voltage);
         if sensor_data
             .data
             .push(Sensor::BatteryVoltage(avg_battery_voltage))
             .is_err()
         {
-            println!("Failed to push BatteryVoltage to sensor_data");
+            error!("Failed to push BatteryVoltage to sensor_data");
         }
     }
 

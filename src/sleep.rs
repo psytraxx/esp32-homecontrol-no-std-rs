@@ -3,7 +3,7 @@ use esp_hal::gpio::RtcPin;
 use esp_hal::peripherals::LPWR;
 use esp_hal::rtc_cntl::sleep::{RtcSleepConfig, RtcioWakeupSource, TimerWakeupSource, WakeupLevel};
 use esp_hal::rtc_cntl::Rtc;
-use esp_println::println;
+use log::info;
 
 /// Enter deep sleep mode for the specified duration.
 pub fn enter_deep(wakeup_pin: &mut dyn RtcPin, rtc_cntl: LPWR, interval: Duration) -> ! {
@@ -17,7 +17,7 @@ pub fn enter_deep(wakeup_pin: &mut dyn RtcPin, rtc_cntl: LPWR, interval: Duratio
     let mut config = RtcSleepConfig::deep();
     config.set_rtc_fastmem_pd_en(false);
 
-    println!("Entering deep sleep for {}", interval);
+    info!("Entering deep sleep for {}", interval);
     rtc.sleep(&config, &[&ext0, &wakeup_source_timer]);
     unreachable!();
 }

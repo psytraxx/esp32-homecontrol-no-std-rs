@@ -27,9 +27,10 @@ use esp_hal::{
     timer::timg::TimerGroup,
     Config,
 };
-use esp_println::{logger::init_logger, println};
+use esp_println::logger::init_logger;
 use esp_radio::wifi::WifiError;
 use esp_rtos::main;
+use log::{error, info};
 use relay_task::relay_task;
 use rtc_memory::RtcCell;
 use sensors_task::{sensor_task, SensorPeripherals};
@@ -76,11 +77,11 @@ async fn main(spawner: Spawner) {
     init_logger(log::LevelFilter::Info);
 
     let boot_count = BOOT_COUNT.get();
-    println!("Current boot count = {}", boot_count);
+    info!("Current boot count = {}", boot_count);
     BOOT_COUNT.set(boot_count + 1);
 
     if let Err(error) = main_fallible(spawner, boot_count).await {
-        println!("Error while running firmware: {:?}", error);
+        error!("Error while running firmware: {:?}", error);
         software_reset()
     }
 }
@@ -130,10 +131,10 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
             .as_str(),
         )?;
     } else {
-        println!("Failed to get stack config");
+        error!("Failed to get stack config");
     }
 
-    println!("Create channel");
+    info!("Create channel");
     let channel: &'static mut _ = CHANNEL.init(Channel::new());
     let receiver = channel.receiver();
     let sender = channel.sender();
@@ -158,16 +159,16 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
 
     let awake_duration = Duration::from_secs(AWAKE_DURATION_SECONDS);
 
-    println!("Stay awake for {}s", awake_duration.as_secs());
+    info!("Stay awake for {}s", awake_duration.as_secs());
     Timer::after(awake_duration).await;
-    println!("Request to disconnect wifi");
+    info!("Request to disconnect wifi");
     STOP_WIFI_SIGNAL.signal(());
 
     // set power pin to low to save power
     power_pin.set_low();
 
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
-    println!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
+    info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
     let mut wake_up_btn_pin = peripherals.GPIO14;
     enter_deep(&mut wake_up_btn_pin, peripherals.LPWR, deep_sleep_duration);
 }
