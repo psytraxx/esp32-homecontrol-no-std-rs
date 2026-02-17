@@ -8,11 +8,7 @@ use embedded_hal::delay::DelayNs;
 use embedded_text::alignment::HorizontalAlignment;
 use embedded_text::style::{HeightMode, TextBoxStyleBuilder};
 use embedded_text::TextBox;
-use esp_hal::gpio::{Level, Output, OutputConfig};
-use esp_hal::peripherals::{
-    GPIO38, GPIO39, GPIO40, GPIO41, GPIO42, GPIO45, GPIO46, GPIO47, GPIO48, GPIO5, GPIO6, GPIO7,
-    GPIO8, GPIO9,
-};
+use esp_hal::gpio::{AnyPin, Level, Output, OutputConfig};
 use mipidsi::interface::{Generic8BitBus, ParallelError, ParallelInterface};
 use mipidsi::models::ST7789;
 use mipidsi::options::{ColorInversion, Orientation, Rotation};
@@ -53,20 +49,20 @@ pub trait DisplayTrait {
 }
 
 pub struct DisplayPeripherals {
-    pub rst: GPIO5<'static>,
-    pub cs: GPIO6<'static>,
-    pub dc: GPIO7<'static>,
-    pub wr: GPIO8<'static>,
-    pub rd: GPIO9<'static>,
-    pub backlight: GPIO38<'static>,
-    pub d0: GPIO39<'static>,
-    pub d1: GPIO40<'static>,
-    pub d2: GPIO41<'static>,
-    pub d3: GPIO42<'static>,
-    pub d4: GPIO45<'static>,
-    pub d5: GPIO46<'static>,
-    pub d6: GPIO47<'static>,
-    pub d7: GPIO48<'static>,
+    pub rst: AnyPin<'static>,
+    pub cs: AnyPin<'static>,
+    pub dc: AnyPin<'static>,
+    pub wr: AnyPin<'static>,
+    pub rd: AnyPin<'static>,
+    pub backlight: AnyPin<'static>,
+    pub d0: AnyPin<'static>,
+    pub d1: AnyPin<'static>,
+    pub d2: AnyPin<'static>,
+    pub d3: AnyPin<'static>,
+    pub d4: AnyPin<'static>,
+    pub d5: AnyPin<'static>,
+    pub d6: AnyPin<'static>,
+    pub d7: AnyPin<'static>,
 }
 
 impl<D: DelayNs> Display<'_, D> {

@@ -20,7 +20,7 @@ use embassy_time::{Delay, Duration, Timer};
 use esp_alloc::heap_allocator;
 use esp_backtrace as _;
 use esp_hal::{
-    gpio::{Level, Output, OutputConfig},
+    gpio::{Level, Output, OutputConfig, Pin},
     ram,
     rng::Rng,
     system::software_reset,
@@ -104,20 +104,20 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let stack = connect_to_wifi(peripherals.WIFI, seed, spawner).await?;
 
     let display_peripherals = DisplayPeripherals {
-        backlight: peripherals.GPIO38,
-        cs: peripherals.GPIO6,
-        dc: peripherals.GPIO7,
-        rst: peripherals.GPIO5,
-        wr: peripherals.GPIO8,
-        rd: peripherals.GPIO9,
-        d0: peripherals.GPIO39,
-        d1: peripherals.GPIO40,
-        d2: peripherals.GPIO41,
-        d3: peripherals.GPIO42,
-        d4: peripherals.GPIO45,
-        d5: peripherals.GPIO46,
-        d6: peripherals.GPIO47,
-        d7: peripherals.GPIO48,
+        backlight: peripherals.GPIO38.degrade(),
+        cs: peripherals.GPIO6.degrade(),
+        dc: peripherals.GPIO7.degrade(),
+        rst: peripherals.GPIO5.degrade(),
+        wr: peripherals.GPIO8.degrade(),
+        rd: peripherals.GPIO9.degrade(),
+        d0: peripherals.GPIO39.degrade(),
+        d1: peripherals.GPIO40.degrade(),
+        d2: peripherals.GPIO41.degrade(),
+        d3: peripherals.GPIO42.degrade(),
+        d4: peripherals.GPIO45.degrade(),
+        d5: peripherals.GPIO46.degrade(),
+        d6: peripherals.GPIO47.degrade(),
+        d7: peripherals.GPIO48.degrade(),
     };
 
     let mut display = Display::new(display_peripherals, Delay)?;
