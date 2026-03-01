@@ -2,7 +2,7 @@ use alloc::string::{String, ToString};
 use core::fmt::{Display, Formatter, Result};
 use heapless::Vec;
 use serde::{Deserialize, Serialize};
-use strum::EnumIter;
+use strum_macros::EnumIter;
 
 const WATER_LEVEL_THRESHOLD: u16 = 3000;
 //soil is wet
