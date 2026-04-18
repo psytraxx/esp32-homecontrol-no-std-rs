@@ -4,9 +4,8 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal}
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals;
 use esp_radio::wifi::{
-    self, ControllerConfig, Interface, WifiController, WifiError,
-    sta::StationConfig,
-    Config as WifiConfig,
+    self, sta::StationConfig, Config as WifiConfig, ControllerConfig, Interface, WifiController,
+    WifiError,
 };
 use log::{error, info};
 use static_cell::StaticCell;
@@ -26,8 +25,8 @@ pub async fn connect_to_wifi(
         .with_ssid(env!("WIFI_SSID"))
         .with_password(env!("WIFI_PSK").into());
 
-    let controller_config = ControllerConfig::default()
-        .with_initial_config(WifiConfig::Station(station_config));
+    let controller_config =
+        ControllerConfig::default().with_initial_config(WifiConfig::Station(station_config));
 
     let (controller, interfaces) = wifi::new(wifi, controller_config)?;
 

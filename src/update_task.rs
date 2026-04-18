@@ -17,8 +17,7 @@ use rust_mqtt::{
     client::{
         event::Event,
         options::{
-            ConnectOptions, PublicationOptions, RetainHandling, SubscriptionOptions,
-            TopicReference,
+            ConnectOptions, PublicationOptions, RetainHandling, SubscriptionOptions, TopicReference,
         },
         Client, MqttError,
     },
