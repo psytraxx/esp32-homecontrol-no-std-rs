@@ -3,12 +3,10 @@ use embassy_net::{Config, DhcpConfig, Runner, Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals;
-use esp_radio::{
-    wifi::{
-        self, ClientConfig, ModeConfig, WifiController, WifiDevice, WifiError, WifiEvent,
-        WifiStaState,
-    },
-    Controller,
+use esp_radio::wifi::{
+    self, ControllerConfig, Interface, WifiController, WifiError,
+    sta::StationConfig,
+    Config as WifiConfig,
 };
 use log::{error, info};
 use static_cell::StaticCell;
@@ -24,24 +22,33 @@ pub async fn connect_to_wifi(
     seed: u64,
     spawner: Spawner,
 ) -> Result<Stack<'static>, WifiError> {
-    static INIT: StaticCell<Controller<'static>> = StaticCell::new();
-    let init = INIT.init(esp_radio::init().unwrap());
+    let station_config = StationConfig::default()
+        .with_ssid(env!("WIFI_SSID"))
+        .with_password(env!("WIFI_PSK").into());
 
-    let (controller, interfaces) = wifi::new(init, wifi, Default::default()).unwrap();
+    let controller_config = ControllerConfig::default()
+        .with_initial_config(WifiConfig::Station(station_config));
 
-    let wifi_interface = interfaces.sta;
+    let (controller, interfaces) = wifi::new(wifi, controller_config)?;
 
-    // initialize network stack
+    {
+        use embassy_net::driver::Driver;
+        let caps = interfaces.station.capabilities();
+        info!(
+            "WiFi driver capabilities: MTU={}, max_burst={:?}",
+            caps.max_transmission_unit, caps.max_burst_size
+        );
+    }
+
     let dhcp_config = DhcpConfig::default();
-
     let config = Config::dhcpv4(dhcp_config);
 
     info!("Initialize network stack");
     let stack_resources: &'static mut _ = STACK_RESOURCES.init(StackResources::new());
-    let (stack, runner) = embassy_net::new(wifi_interface, config, stack_resources, seed);
+    let (stack, runner) = embassy_net::new(interfaces.station, config, stack_resources, seed);
 
-    spawner.spawn(connection(controller)).ok();
-    spawner.spawn(net_task(runner)).ok();
+    spawner.spawn(connection(controller).expect("Unable to start controller"));
+    spawner.spawn(net_task(runner).expect("Unable to start net task"));
 
     info!("Wait for network link");
     loop {
@@ -64,7 +71,7 @@ pub async fn connect_to_wifi(
 }
 
 #[embassy_executor::task]
-async fn net_task(mut runner: Runner<'static, WifiDevice<'static>>) {
+async fn net_task(mut runner: Runner<'static, Interface<'static>>) {
     runner.run().await
 }
 
@@ -79,43 +86,22 @@ async fn connection(controller: WifiController<'static>) {
 }
 
 async fn connection_fallible(mut controller: WifiController<'static>) -> Result<(), WifiError> {
-    info!("Start connection task, device capabilities:");
-    let caps = controller.capabilities().unwrap();
-    caps.iter().for_each(|o| {
-        info!("{:?}", o);
-    });
+    info!("Start connection task");
 
     loop {
-        if wifi::sta_state() == WifiStaState::Connected {
-            // wait until we're no longer connected
-            controller.wait_for_event(WifiEvent::StaDisconnected).await;
-            Timer::after(Duration::from_millis(5000)).await
-        }
-
-        if !matches!(controller.is_started(), Ok(true)) {
-            let ssid = env!("WIFI_SSID").try_into().unwrap();
-            let password = env!("WIFI_PSK").try_into().unwrap();
-            info!("Connecting to wifi with SSID: {}", ssid);
-            let client_config = ModeConfig::Client(
-                ClientConfig::default()
-                    .with_ssid(ssid)
-                    .with_password(password),
-            );
-
-            controller.set_config(&client_config)?;
-            info!("Starting WiFi controller");
-            controller.start_async().await?;
-            info!("WiFi controller started");
+        if controller.is_connected() {
+            controller.wait_for_disconnect_async().await.ok();
+            Timer::after(Duration::from_millis(5000)).await;
         }
 
         info!("About to connect to {}...", env!("WIFI_SSID"));
         match controller.connect_async().await {
-            Ok(()) => {
+            Ok(_) => {
                 info!("Connected to WiFi network");
                 info!("Wait for request to stop wifi");
                 STOP_WIFI_SIGNAL.wait().await;
                 info!("Received signal to stop wifi");
-                controller.stop_async().await?;
+                controller.disconnect_async().await.ok();
                 break;
             }
             Err(error) => {

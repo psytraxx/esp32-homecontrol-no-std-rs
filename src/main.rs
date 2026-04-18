@@ -92,7 +92,9 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 73744);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_rtos::start(timg0.timer0);
+    let sw_interrupt =
+        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
+    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 
     // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
@@ -139,7 +141,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let receiver = channel.receiver();
     let sender = channel.sender();
 
-    spawner.spawn(update_task(stack, display, receiver)).ok();
+    spawner.spawn(update_task(stack, display, receiver).expect("Unable to start update task"));
 
     // see https://github.com/Xinyuan-LilyGO/T-Display-S3/blob/main/image/T-DISPLAY-S3.jpg
     let sensor_peripherals = SensorPeripherals {
@@ -153,9 +155,9 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
         adc2: peripherals.ADC2,
     };
 
-    spawner.spawn(sensor_task(sender, sensor_peripherals)).ok();
+    spawner.spawn(sensor_task(sender, sensor_peripherals).expect("Unable to start sensor task"));
 
-    spawner.spawn(relay_task(peripherals.GPIO2)).ok();
+    spawner.spawn(relay_task(peripherals.GPIO2).expect("Unable to start relay task"));
 
     let awake_duration = Duration::from_secs(AWAKE_DURATION_SECONDS);
 

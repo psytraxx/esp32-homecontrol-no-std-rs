@@ -2,7 +2,7 @@ use alloc::{
     format,
     string::{String, ToString},
 };
-use core::{num::ParseIntError, str};
+use core::{num::NonZero, num::ParseIntError, str};
 use embassy_futures::select::{select, Either};
 use embassy_net::{
     dns::{DnsQueryType, Error as DnsError},
@@ -16,7 +16,10 @@ use rust_mqtt::{
     buffer::AllocBuffer,
     client::{
         event::Event,
-        options::{ConnectOptions, PublicationOptions, RetainHandling, SubscriptionOptions},
+        options::{
+            ConnectOptions, PublicationOptions, RetainHandling, SubscriptionOptions,
+            TopicReference,
+        },
         Client, MqttError,
     },
     config::{KeepAlive, SessionExpiryInterval},
@@ -79,13 +82,14 @@ pub async fn update_task(
 
         let pump_set_topic = format!("{DEVICE_ID}/pump/set");
         let topic =
-            unsafe { TopicName::new_unchecked(MqttString::from_slice(&pump_set_topic).unwrap()) };
+            TopicName::new_unchecked(MqttString::try_from(pump_set_topic.as_str()).unwrap());
 
         let sub_options = SubscriptionOptions {
             retain_handling: RetainHandling::SendIfNotSubscribedBefore,
             retain_as_published: true,
             no_local: false,
             qos: QoS::AtMostOnce,
+            ..Default::default()
         };
 
         if let Err(e) = client.subscribe(topic.into(), sub_options).await {
@@ -114,7 +118,7 @@ pub async fn update_task(
                 Either::Second(result) => match result {
                     Ok(Event::Publish(e)) => {
                         action_to_perform = process_received_mqtt_message(
-                            e.topic.as_ref(),
+                            e.topic.as_ref().as_str(),
                             e.message.as_ref(),
                             &pump_set_topic,
                         );
@@ -134,15 +138,10 @@ pub async fn update_task(
                         topic_to_clear
                     );
 
-                    let options = PublicationOptions {
-                        retain: true,
-                        qos: QoS::AtMostOnce,
-                        topic: unsafe {
-                            TopicName::new_unchecked(
-                                MqttString::from_slice(&topic_to_clear).unwrap(),
-                            )
-                        },
-                    };
+                    let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+                        MqttString::try_from(topic_to_clear.as_str()).unwrap(),
+                    ));
+                    let options = PublicationOptions::new(topic_ref).retain();
 
                     if let Err(e) = client.publish(&options, Bytes::Borrowed(&[])).await {
                         error!("Error clearing retained message: {:?}. Reconnecting...", e);
@@ -155,7 +154,7 @@ pub async fn update_task(
     }
 }
 
-type MqttClientImpl<'a> = Client<'a, TcpSocket<'a>, AllocBuffer, 1, 1, 1>;
+type MqttClientImpl<'a> = Client<'a, TcpSocket<'a>, AllocBuffer, 1, 1, 1, 1>;
 
 async fn initialize_mqtt_client<'a>(
     stack: Stack<'static>,
@@ -179,12 +178,13 @@ async fn initialize_mqtt_client<'a>(
         user_name: Some(MqttString::try_from(env!("MQTT_USERNAME")).unwrap()),
         password: Some(MqttBinary::try_from(env!("MQTT_PASSWORD")).unwrap()),
         clean_start: false,
-        keep_alive: KeepAlive::Seconds(3),
+        keep_alive: KeepAlive::Seconds(NonZero::new(3).unwrap()),
         session_expiry_interval: SessionExpiryInterval::Seconds(5),
         will: None,
+        ..Default::default()
     };
 
-    let mut client = Client::<'_, _, _, 1, 1, 1>::new(&mut resources.alloc_buffer);
+    let mut client = Client::<'_, _, _, 1, 1, 1, 1>::new(&mut resources.alloc_buffer);
 
     match client
         .connect(
@@ -236,13 +236,10 @@ async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(),
         for s in Sensor::iter() {
             let (discovery_topic, message) = get_sensor_discovery(&s);
 
-            let options = PublicationOptions {
-                retain: true,
-                qos: QoS::AtMostOnce,
-                topic: unsafe {
-                    TopicName::new_unchecked(MqttString::from_slice(&discovery_topic).unwrap())
-                },
-            };
+            let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+                MqttString::try_from(discovery_topic.as_str()).unwrap(),
+            ));
+            let options = PublicationOptions::new(topic_ref).retain();
 
             client
                 .publish(&options, Bytes::Borrowed(message.as_bytes()))
@@ -252,13 +249,10 @@ async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(),
 
         let (discovery_topic, message) = get_pump_discovery("pump");
 
-        let options = PublicationOptions {
-            retain: true,
-            qos: QoS::AtMostOnce,
-            topic: unsafe {
-                TopicName::new_unchecked(MqttString::from_slice(&discovery_topic).unwrap())
-            },
-        };
+        let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+            MqttString::try_from(discovery_topic.as_str()).unwrap(),
+        ));
+        let options = PublicationOptions::new(topic_ref).retain();
 
         client
             .publish(&options, Bytes::Borrowed(message.as_bytes()))
@@ -305,13 +299,10 @@ async fn publish_sensor_data(
             message.as_str()
         );
 
-        let options = PublicationOptions {
-            retain: false,
-            qos: QoS::AtMostOnce,
-            topic: unsafe {
-                TopicName::new_unchecked(MqttString::from_slice(&topic_name).unwrap())
-            },
-        };
+        let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+            MqttString::try_from(topic_name.as_str()).unwrap(),
+        ));
+        let options = PublicationOptions::new(topic_ref);
 
         client
             .publish(&options, Bytes::Borrowed(message.as_bytes()))
