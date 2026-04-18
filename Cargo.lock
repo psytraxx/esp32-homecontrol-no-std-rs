@@ -1030,8 +1030,6 @@ dependencies = [
  "embassy-time",
  "embedded-graphics",
  "embedded-hal 1.0.0",
- "embedded-io 0.7.1",
- "embedded-io-async 0.7.0",
  "embedded-text",
  "esp-alloc",
  "esp-backtrace",
@@ -1047,7 +1045,6 @@ dependencies = [
  "rust-mqtt",
  "serde",
  "serde_json",
- "smoltcp",
  "static_cell",
  "strum 0.28.0",
  "strum_macros 0.28.0",
@@ -1763,7 +1760,6 @@ dependencies = [
  "byteorder",
  "cfg-if",
  "heapless 0.9.2",
- "log",
  "managed",
 ]
 
