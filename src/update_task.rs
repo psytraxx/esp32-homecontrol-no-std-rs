@@ -176,9 +176,9 @@ async fn initialize_mqtt_client<'a>(
     let options = ConnectOptions {
         user_name: Some(MqttString::try_from(env!("MQTT_USERNAME")).unwrap()),
         password: Some(MqttBinary::try_from(env!("MQTT_PASSWORD")).unwrap()),
-        clean_start: false,
-        keep_alive: KeepAlive::Seconds(NonZero::new(3).unwrap()),
-        session_expiry_interval: SessionExpiryInterval::Seconds(5),
+        clean_start: true,
+        keep_alive: KeepAlive::Seconds(NonZero::new(60).unwrap()),
+        session_expiry_interval: SessionExpiryInterval::Seconds(60),
         will: None,
         ..Default::default()
     };
