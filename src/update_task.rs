@@ -377,6 +377,8 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
         payload["unit_of_measurement"] = json!(unit);
         // only set state_class if unit is present - enables Home Assistant to display the unit correctly and keep track of state changes
         payload["state_class"] = json!("measurement");
+        // force HA to record every incoming value even if unchanged (prevents recorder deduplication)
+        payload["force_update"] = json!(true);
     }
 
     let discovery_topic = format!(
