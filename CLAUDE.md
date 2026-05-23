@@ -4,6 +4,17 @@ ESP32-based plant watering system for the LilyGO T-Display-S3 board using no-std
 
 > **For general ESP32 Rust development guidance**, see `.claude/skills/esp32-rust-embedded/SKILL.md`
 
+## Required Workflow
+
+Before committing any change:
+1. **`cargo fmt`** — format all code (run first, always)
+2. **`cargo clippy`** — fix all warnings before proceeding
+3. **Update `CHANGELOG.md`** — add entry under `[Unreleased]` describing what changed and why
+
+Never skip these steps. Clippy warnings are treated as errors.
+
+---
+
 ## Quick Start
 
 ```bash
