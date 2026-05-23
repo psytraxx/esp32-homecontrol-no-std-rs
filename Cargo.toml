@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-esp-hal = { version = "1.1.0", features = ["esp32s3", "log-04", "unstable"] }
+esp-hal = { version = "1.1.1", features = ["esp32s3", "log-04", "unstable"] }
 
 esp-rtos = { version = "0.3.0", features = [
     "embassy",
@@ -45,7 +45,7 @@ esp-radio = { version = "0.18.0", features = [
 static_cell = "2.1.1"
 
 mipidsi = { version = "0.10.0" }
-heapless = { version = "0.9.2", default-features = false }
+heapless = { version = "0.9.3", default-features = false }
 rust-mqtt = { version = "0.5.1", default-features = true, features = [
     "log",
     "alloc",
@@ -54,7 +54,7 @@ embedded-text = "0.7.3"
 embedded-graphics = { version = "0.8.2", features = [] }
 embedded-hal = { version = "1.0.0", features = [] }
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
-serde_json = { version = "1.0.149", default-features = false, features = [
+serde_json = { version = "1.0.150", default-features = false, features = [
     "alloc",
 ] }
 embassy-futures = { version = "0.1.2", features = [] }
