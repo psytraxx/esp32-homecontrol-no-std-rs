@@ -106,15 +106,14 @@ async fn main(spawner: Spawner) {
         d7: peripherals.GPIO48.degrade(),
     };
 
-    // see https://github.com/Xinyuan-LilyGO/T-Display-S3/blob/main/image/T-DISPLAY-S3.jpg
+    // V2 hardware: all sensors on I2C bus (GPIO3=SDA, GPIO10=SCL)
+    // Water level ADC (GPIO12) kept — binary overflow detector only
     let sensor_peripherals = SensorPeripherals {
-        dht11_digital_pin: peripherals.GPIO1,
-        battery_pin: peripherals.GPIO4,
-        moisture_analog_pin: peripherals.GPIO11,
-        moisture_power_pin: peripherals.GPIO16,
+        i2c: peripherals.I2C0,
+        sda: peripherals.GPIO3,
+        scl: peripherals.GPIO10,
         water_level_analog_pin: peripherals.GPIO12,
         water_level_power_pin: peripherals.GPIO21,
-        adc1: peripherals.ADC1,
         adc2: peripherals.ADC2,
     };
 

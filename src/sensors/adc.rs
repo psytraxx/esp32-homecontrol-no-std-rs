@@ -1,17 +1,16 @@
 use embassy_time::{Duration, Timer};
 use esp_hal::{
-    Blocking,
-    analog::adc::{Adc, AdcCalLine, AdcCalScheme, AdcChannel, AdcPin, RegisterAccess},
+    analog::adc::{Adc, AdcCalScheme, AdcChannel, AdcPin, RegisterAccess},
     gpio::Output,
-    peripherals::{ADC1, GPIO4},
+    Blocking,
 };
-use log::{error, info};
+use log::error;
 
-use crate::config::{SENSOR_WARMUP_DELAY_MS, USB_CHARGING_VOLTAGE_MV};
+use crate::config::SENSOR_WARMUP_DELAY_MS;
 
 /// Power pin on → warmup → ADC sample → power pin off.
 ///
-/// Unified reader for any powered ADC sensor (soil moisture, water level).
+/// Unified reader for any powered ADC sensor (water level).
 /// Each call site is monomorphised over its concrete pin/ADC types.
 pub(super) async fn read_powered_adc_sensor<'a, PIN, ADCI, ADCC>(
     adc: &mut Adc<'a, ADCI, Blocking>,
@@ -27,24 +26,6 @@ where
     let result = sample_adc_with_warmup(adc, pin, SENSOR_WARMUP_DELAY_MS).await;
     power_pin.set_low();
     result
-}
-
-/// Read battery voltage, applying the 2× voltage divider and filtering out USB-charging readings.
-pub(super) async fn read_battery_voltage<'a>(
-    adc: &mut Adc<'a, ADC1<'a>, Blocking>,
-    pin: &mut AdcPin<GPIO4<'a>, ADC1<'a>, AdcCalLine<ADC1<'a>>>,
-) -> Option<u16> {
-    let value = sample_adc_with_warmup(adc, pin, SENSOR_WARMUP_DELAY_MS).await? * 2;
-
-    if value < USB_CHARGING_VOLTAGE_MV {
-        Some(value)
-    } else {
-        info!(
-            "Battery voltage too high - looks we are charging on USB: {}mV",
-            value
-        );
-        None
-    }
 }
 
 /// Sample an ADC pin after a configurable warmup delay.

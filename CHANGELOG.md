@@ -38,6 +38,16 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `src/sensors/` module replacing `sensors_task.rs`: `hardware.rs` (peripheral init), `adc.rs` (unified `read_powered_adc_sensor`), `builder.rs` (data assembly), `mod.rs` (one-shot `read_sensors()`).
 - Sensor sampling constants (`USB_CHARGING_VOLTAGE_MV`, `DHT11_WARMUP_DELAY_MS`, `SENSOR_WARMUP_DELAY_MS`, `SENSOR_SAMPLE_COUNT`) moved to `config.rs`.
 - MQTT discovery payload includes `force_update: true` for numeric sensors — prevents HA recorder from deduplicating unchanged values.
+- V2 sensor drivers integrated into firmware:
+  - **AHT20** (`embedded-aht20` crate, async) — air temperature (f32 °C ±0.3) + humidity (f32 % ±2), replaces DHT11
+  - **BMP280** (`bme280-rs` crate, async) — barometric pressure (f32 hPa ±1), new sensor
+  - **STEMMA Soil** (inline Seesaw protocol over async I2C) — soil moisture counts (u16, 200–2000) + soil temperature (f32 °C); replaces noisy capacitive ADC
+  - **INA219** (`ina219` crate, async) — battery bus voltage (mV), current (mA), power (mW); replaces ADC voltage divider
+- All four I2C sensors share a single async `Mutex<NoopRawMutex, I2c<Async>>` bus via `embassy-embedded-hal` `I2cDevice`
+- New `Sensor` enum variants: `OverflowDetected(bool)`, `AirPressure`, `SoilTemperature`, `SoilMoisture` (raw counts), `SoilMoistureLevel`, `BatteryCurrent`, `BatteryPower`
+- `MoistureLevel` thresholds updated for STEMMA 200–2000 range (was v1 ADC 800–2150 range)
+- `SensorData.data` capacity set to 10 to accommodate new sensors
+- `embedded-hal-async` and `embassy-embedded-hal` added as explicit dependencies
 
 ### Removed
 - `update_task`, `relay_task`, `sensor_task` and their statics: `CHANNEL` (sensor data), `ENABLE_PUMP` and `DISPLAY_SLEEP` signals. Only `WIFI_SIGNAL` remains (graceful WiFi shutdown).
@@ -45,7 +55,10 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `SensorData.publish` field — sensor data is always published.
 - `PUMP_TRIGGER_INTERVAL` constant and boot-count modulo scheduling.
 - Valve MQTT entity replaced by switch + sensor (see above). **Delete old retained discovery topics `homeassistant/valve/...` and `homeassistant/button/...` from broker after flashing.**
-- `WaterLevel` enum replaced by `Sensor::OverflowDetected(bool)` — simpler, no intermediate type. MQTT topic changed from `waterlevel` to `overflow`; published value is `"YES"` (water detected) or `"NO"` (dry). Water level pin now reads without ADC calibration (`()` cal scheme) matching observed raw counts. **Delete the old retained discovery topic `homeassistant/sensor/{DEVICE_ID}_waterlevel/config` from the broker after flashing.**
+- `WaterLevel` enum replaced by `Sensor::OverflowDetected(bool)` — simpler, no intermediate type. MQTT topic changed from `waterlevel` to `overflow`; published value is `"YES"` (water detected) or `"NO"` (dry). **Delete the old retained discovery topic `homeassistant/sensor/{DEVICE_ID}_waterlevel/config` from the broker after flashing.**
+- `src/dht11.rs` — DHT11 bit-bang driver deleted; replaced by AHT20
+- ADC paths for GPIO4 (battery), GPIO11 (soil moisture), GPIO16 (moisture power) — all replaced by I2C sensors
+- `SoilMoistureRawLevel` struct from domain — replaced by `SoilMoisture(u16)` raw counts
 
 ---
 
