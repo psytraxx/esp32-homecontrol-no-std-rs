@@ -12,17 +12,26 @@ Expert guidance for no-std Rust development on ESP32 microcontrollers using the 
 
 ### Core Dependencies
 ```toml
-esp-hal = { version = "1.0.0", features = ["esp32s3", "log-04", "unstable"] }
-esp-rtos = { version = "0.2.0", features = ["embassy", "esp-alloc", "esp-radio", "esp32s3", "log-04"] }
-esp-radio = { version = "0.17.0", features = ["esp-alloc", "esp32s3", "wifi", "smoltcp"] }
-esp-bootloader-esp-idf = { version = "0.4.0", features = ["esp32s3", "log-04"] }
+esp-hal = { version = "~1.1.0", features = ["esp32s3", "log-04", "unstable"] }
+esp-rtos = { version = "0.3.0", features = ["embassy", "esp-alloc", "esp-radio", "esp32s3", "log-04"] }
+esp-radio = { version = "0.18.0", features = ["esp-alloc", "esp32s3", "log-04", "unstable", "wifi"] }
+esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32s3", "log-04"] }
+esp-alloc = "0.10.0"
+esp-println = { version = "0.17.0", features = ["esp32s3", "log-04"] }
+
+# smoltcp is now a DIRECT dependency (no longer a feature of esp-radio)
+smoltcp = { version = "0.13.0", default-features = false, features = [
+  "log", "medium-ethernet", "multicast",
+  "proto-dhcpv4", "proto-dns", "proto-ipv4",
+  "socket-dns", "socket-icmp", "socket-raw", "socket-tcp", "socket-udp",
+] }
 ```
 
 ### Embassy Framework
 ```toml
-embassy-executor = { version = "0.9.1", features = ["log"] }
+embassy-executor = { version = "0.10.0", features = ["log"] }
 embassy-time = { version = "0.5.0", features = ["log"] }
-embassy-net = { version = "0.7.1", features = ["dhcpv4", "tcp", "udp", "dns"] }
+embassy-net = { version = "0.9.1", features = ["dhcpv4", "log", "medium-ethernet", "tcp", "udp"] }
 embassy-sync = { version = "0.7.2" }
 ```
 
@@ -31,6 +40,11 @@ embassy-sync = { version = "0.7.2" }
 esp-radio (WiFi) -> esp-rtos (scheduler) -> esp-hal (HAL) -> esp-phy (PHY)
 embassy-executor -> embassy-time -> embassy-sync -> embassy-net
 ```
+
+### Rust Edition & MSRV
+- **Edition**: 2024 (`edition = "2024"` in Cargo.toml)
+- **MSRV**: 1.88 (`rust-version = "1.88"`)
+- **Binary location**: `src/bin/main.rs` (not `src/main.rs`) — `[[bin]]` entry required in Cargo.toml
 
 ## Build & Flash
 
@@ -74,11 +88,14 @@ codegen-units = 1
 - Check `build.rs` has linkall.x configuration
 - Verify esp-hal version compatibility
 
-**undefined symbol: `esp_rtos_initialized`**
-- Ensure esp-rtos is started with timer:
+**undefined symbol: `esp_rtos_*`** ("esp-radio has no scheduler enabled")
+- Ensure esp-rtos is started with BOTH a timer AND a software interrupt (changed in 0.3.0):
 ```rust
 let timg0 = TimerGroup::new(peripherals.TIMG0);
-esp_rtos::start(timg0.timer0);
+let sw_interrupt = esp_hal::interrupt::software::SoftwareInterruptControl::new(
+    peripherals.SW_INTERRUPT
+);
+esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 ```
 
 **Environment variable errors**
@@ -91,23 +108,37 @@ esp_rtos::start(timg0.timer0);
 ```rust
 #![no_std]
 #![no_main]
+// Recommended lints (now standard in esp-generate templates)
+#![deny(clippy::mem_forget)]  // esp-hal types must not be mem::forgotten
+#![deny(clippy::large_stack_frames)]
 
-use esp_rtos::main;
+use embassy_executor::Spawner;
+use esp_hal::{clock::CpuClock, timer::timg::TimerGroup};
 
-#[main]
-async fn main(spawner: Spawner) {
-    // Initialize logger
-    init_logger(log::LevelFilter::Info);
+esp_bootloader_esp_idf::esp_app_desc!();
 
-    // Initialize HAL
-    let peripherals = esp_hal::init(Config::default());
+#[esp_rtos::main]
+async fn main(spawner: Spawner) -> ! {
+    // Initialize logger (reads RUST_LOG env var at compile time via esp-config)
+    esp_println::logger::init_logger_from_env();
 
-    // Setup heap allocator
-    heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 73744);
+    // Initialize HAL with max CPU clock
+    let config = esp_hal::Config::default().with_cpu_clock(CpuClock::max());
+    let peripherals = esp_hal::init(config);
 
-    // Start RTOS scheduler
+    // Setup heap allocator using reclaimed memory (replaces dram2_uninit approach)
+    esp_alloc::heap_allocator!(#[esp_hal::ram(reclaimed)] size: 73744);
+
+    // Start RTOS scheduler — now requires BOTH a timer AND a software interrupt
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_rtos::start(timg0.timer0);
+    let sw_interrupt = esp_hal::interrupt::software::SoftwareInterruptControl::new(
+        peripherals.SW_INTERRUPT
+    );
+    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
+
+    // Spawn tasks...
+    let _ = spawner;
+    loop {}
 }
 ```
 
@@ -277,10 +308,12 @@ BOOT_COUNT.set(count + 1);
 
 ### Connection Setup
 ```rust
+// esp_radio::init() is GONE — wifi::new() is called directly (as of esp-radio 0.18+)
 use esp_radio::wifi::{self, ClientConfig, ModeConfig, WifiController};
 
-let init = esp_radio::init().unwrap();
-let (controller, interfaces) = wifi::new(&init, wifi_peripheral, Default::default()).unwrap();
+let (mut controller, interfaces) =
+    esp_radio::wifi::new(peripherals.WIFI, Default::default())
+        .expect("Failed to initialize Wi-Fi controller");
 
 let client_config = ModeConfig::Client(
     ClientConfig::default()
@@ -402,12 +435,15 @@ impl From<WifiError> for Error {
 
 ### Fallible Main Pattern
 ```rust
-#[main]
-async fn main(spawner: Spawner) {
+// Note: #[esp_rtos::main] (not use esp_rtos::main; #[main])
+// Note: main now returns `-> !` (diverging)
+#[esp_rtos::main]
+async fn main(spawner: Spawner) -> ! {
     if let Err(error) = main_fallible(spawner).await {
-        println!("Error: {:?}", error);
-        software_reset();
+        log::error!("Fatal: {:?}", error);
+        esp_hal::system::software_reset();
     }
+    unreachable!()
 }
 
 async fn main_fallible(spawner: Spawner) -> Result<(), Error> {
@@ -429,7 +465,11 @@ cargo clippy -- -D warnings
 - GPIO API changes frequently (OutputConfig)
 - Timer initialization changes
 - Feature flag renames
-- Always check esp-hal release notes
+- **esp-rtos 0.3.0**: `esp_rtos::start()` now requires 2 args (timer + software interrupt)
+- **esp-radio 0.18.0**: `esp_radio::init()` removed; call `esp_radio::wifi::new()` directly
+- **smoltcp**: now a direct dependency, not a feature of esp-radio
+- **heap_allocator!**: use `#[esp_hal::ram(reclaimed)]` instead of `#[unsafe(link_section = ".dram2_uninit")]`
+- Always check esp-hal release notes and migrate with esp-generate's generated templates as reference
 
 ### Version Alignment
 Update Embassy crates together:
@@ -437,13 +477,32 @@ Update Embassy crates together:
 cargo update -p embassy-executor -p embassy-time -p embassy-sync -p embassy-net
 ```
 
+### esp-generate (project scaffold tool)
+```bash
+# Install
+cargo install esp-generate --locked
+
+# Generate ESP32-S3 project with Embassy + WiFi + alloc
+esp-generate --chip esp32s3 -o unstable-hal -o embassy -o alloc -o wifi -o log my-project
+
+# Available options: unstable-hal, alloc, wifi, ble-trouble, embassy,
+#   probe-rs, defmt, log, esp-backtrace, embedded-test, wokwi, ci,
+#   vscode, neovim, helix, zed
+```
+Note: `wifi` option now **requires** both `unstable-hal` and `alloc`.  
+Note: `embassy` option requires `unstable-hal`.
+
 ## Debugging
 
 ### Serial Logging
 ```rust
 use esp_println::println;
-init_logger(log::LevelFilter::Info);
-println!("Debug: value = {}", value);
+// New: reads RUST_LOG at compile time via esp-config (.cargo/esp-config.toml)
+esp_println::logger::init_logger_from_env();
+// Or explicitly set a level:
+// esp_println::logger::init_logger(log::LevelFilter::Info);
+log::info!("Debug: value = {}", value);
+println!("Debug: value = {}", value); // also works
 ```
 
 ### Common Runtime Issues
