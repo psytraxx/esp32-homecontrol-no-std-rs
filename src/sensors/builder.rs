@@ -19,7 +19,9 @@ const STEMMA_ADDRESS: u8 = 0x36;
 /// INA219 shunt resistor value (module uses 0.1 Ω).
 const INA219_SHUNT_OHM: f32 = 0.1;
 
-type SharedI2c = Mutex<NoopRawMutex, I2c<'static, esp_hal::Async>>;
+use esp_hal::Async;
+
+type SharedI2c = Mutex<NoopRawMutex, I2c<'static, Async>>;
 
 /// Collect all sensor readings and build the averaged SensorData.
 pub(super) async fn collect_all_sensor_data(hw: &mut SensorHardware<'static>) -> SensorData {
@@ -138,7 +140,8 @@ pub(super) async fn collect_all_sensor_data(hw: &mut SensorHardware<'static>) ->
 /// Read STEMMA Soil Sensor via raw I2C transactions.
 ///
 /// Protocol (from Adafruit Seesaw firmware):
-/// - Temperature: write `[0x00, 0x04]`, wait 125 ms, read 4 bytes → big-endian i32 × 0.000015258789 = °C
+/// - Temperature: write `[0x00, 0x04]`, wait 125 ms, read 4 bytes → big-endian i32 × 0.000015258789
+///   = °C
 /// - Moisture:    write `[0x0F, 0x10]`, wait 5 ms,  read 2 bytes → big-endian u16 (200–2000)
 ///
 /// Each I2C transaction gets its own `I2cDevice` so the bus lock is released between write and

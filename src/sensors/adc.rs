@@ -1,8 +1,8 @@
 use embassy_time::{Duration, Timer};
 use esp_hal::{
+    Blocking,
     analog::adc::{Adc, AdcCalScheme, AdcChannel, AdcPin, RegisterAccess},
     gpio::Output,
-    Blocking,
 };
 use log::error;
 

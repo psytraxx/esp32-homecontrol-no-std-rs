@@ -1,8 +1,12 @@
 use embassy_time::Duration;
-use esp_hal::gpio::RtcPin;
-use esp_hal::peripherals::LPWR;
-use esp_hal::rtc_cntl::Rtc;
-use esp_hal::rtc_cntl::sleep::{RtcSleepConfig, RtcioWakeupSource, TimerWakeupSource, WakeupLevel};
+use esp_hal::{
+    gpio::RtcPin,
+    peripherals::LPWR,
+    rtc_cntl::{
+        Rtc,
+        sleep::{RtcSleepConfig, RtcioWakeupSource, TimerWakeupSource, WakeupLevel},
+    },
+};
 
 /// Enter deep sleep mode for the specified duration.
 ///

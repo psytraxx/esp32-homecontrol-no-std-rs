@@ -3,13 +3,13 @@ use embassy_sync::{blocking_mutex::raw::NoopRawMutex, mutex::Mutex};
 use embassy_time::Delay;
 use embedded_aht20::{Aht20, DEFAULT_I2C_ADDRESS as AHT20_ADDRESS};
 use esp_hal::{
+    Async, Blocking,
     analog::adc::{Adc, AdcCalCurve, AdcConfig, AdcPin, Attenuation},
     gpio::{Level, Output, OutputConfig},
     i2c::master::{Config, I2c},
     peripherals::{ADC2, GPIO12, GPIO21, I2C0},
-    Async, Blocking,
 };
-use ina219::{address::Address, AsyncIna219, calibration::UnCalibrated};
+use ina219::{AsyncIna219, address::Address, calibration::UnCalibrated};
 use log::{error, warn};
 use static_cell::StaticCell;
 
@@ -17,8 +17,6 @@ use static_cell::StaticCell;
 const BMP280_ADDRESS: u8 = 0x76;
 /// INA219 default I2C address (A0=GND, A1=GND).
 const INA219_ADDRESS: u8 = 0x40;
-/// INA219 shunt resistor value (module uses 0.1 Ω).
-const INA219_SHUNT_OHM: f32 = 0.1;
 
 type SharedI2c = Mutex<NoopRawMutex, I2c<'static, Async>>;
 
