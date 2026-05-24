@@ -35,7 +35,7 @@ use crate::{
         HOMEASSISTANT_SENSOR_TOPIC, HOMEASSISTANT_VALVE_TOPIC,
     },
     display::{self, Display, DisplayTrait},
-    domain::{Sensor, SensorData, WaterLevel},
+    domain::{Actuator, Sensor, SensorData, WaterLevel},
     DISCOVERY_MESSAGES_SENT, ENABLE_PUMP,
 };
 
@@ -268,23 +268,24 @@ async fn publish_sensor_data(
     client: &mut MqttClientImpl<'_>,
     sensor_data: &SensorData,
 ) -> Result<(), Error> {
-    // check if we can enable the pump
+    // Only allow the pump when the drainage water level is empty (pot not overwatered)
     let allow_enable_pump = sensor_data
         .data
         .iter()
         .any(|entry| matches!(entry, Sensor::WaterLevel(WaterLevel::Empty)));
 
-    sensor_data.data.iter().for_each(|entry| {
-        if let Sensor::PumpTrigger(enabled) = entry {
-            let enabled = *enabled;
-            if allow_enable_pump {
-                info!("Pump trigger value: {} - updating pump state", enabled);
-                update_pump_state(enabled);
-            } else {
-                update_pump_state(false);
+    for actuator in &sensor_data.actuators {
+        match actuator {
+            Actuator::Pump(enabled) => {
+                if allow_enable_pump {
+                    info!("Pump trigger value: {} - updating pump state", enabled);
+                    update_pump_state(*enabled);
+                } else {
+                    update_pump_state(false);
+                }
             }
         }
-    });
+    }
 
     for s in &sensor_data.data {
         let key = s.topic();
