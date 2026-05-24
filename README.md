@@ -147,6 +147,17 @@ graph TD
   - Configurable wake/sleep cycles
   - Battery-optimized operation
 
+> **ℹ️ USB / development mode — sensor data is intentionally not published**
+>
+> Battery voltage is read via a ×2 ADC voltage divider on GPIO4. When the
+> measured voltage exceeds `USB_CHARGING_VOLTAGE_MV` (≈ 4 500 mV) the reading
+> is discarded and `sensor_data.publish` is set to `false`, suppressing all
+> MQTT publishes for that wake cycle. This is a deliberate design decision:
+> a reading in that range means the board is powered from USB (laptop / charger)
+> rather than from the LiPo battery, so the values would be meaningless in the
+> field. **This is not a bug.** To publish during development, power the board
+> from the LiPo battery instead of USB.
+
 ---
 
 ## Dependencies
