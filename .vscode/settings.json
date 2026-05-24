@@ -1,26 +1,12 @@
+
 {
   "rust-analyzer.cargo.allTargets": false,
   "rust-analyzer.cargo.target": "xtensa-esp32s3-none-elf",
-  "rust-analyzer.cargo.sysroot": "discover",
   "rust-analyzer.server.extraEnv": {
     "RUSTUP_TOOLCHAIN": "stable"
   },
   "rust-analyzer.cargo.extraEnv": {
-    "RUSTUP_TOOLCHAIN": "esp",
-    "WIFI_SSID": "placeholder",
-    "WIFI_PSK": "placeholder",
-    "MQTT_HOSTNAME": "localhost",
-    "MQTT_USERNAME": "placeholder",
-    "MQTT_PASSWORD": "placeholder",
-    "MQTT_PORT": "1883"
-  },
-  "rust-analyzer.checkOnSave.extraEnv": {
-    "WIFI_SSID": "placeholder",
-    "WIFI_PSK": "placeholder",
-    "MQTT_HOSTNAME": "localhost",
-    "MQTT_USERNAME": "placeholder",
-    "MQTT_PASSWORD": "placeholder",
-    "MQTT_PORT": "1883"
+    "RUSTUP_TOOLCHAIN": "esp"
   },
   "chat.useAgentSkills": true
 }

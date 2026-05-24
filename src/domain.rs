@@ -14,10 +14,17 @@ const MOISTURE_WET_THRESHOLD: f32 = 0.8;
 // less than 15% is dry
 const MOISTURE_DRY_THRESHOLD: f32 = 0.15;
 
+/// Actuator commands — mirrors the Sensor enum pattern; add new variants as needed.
+#[derive(Debug)]
+pub enum Actuator {
+    Pump(bool),
+}
+
 /// Struct to hold sensor data
 #[derive(Default, Debug)]
 pub struct SensorData {
-    pub data: Vec<Sensor, 7>,
+    pub data: Vec<Sensor, 6>,
+    pub actuators: Vec<Actuator, 1>,
     pub publish: bool,
 }
 
@@ -99,7 +106,6 @@ pub enum Sensor {
     SoilMoisture(MoistureLevel),           // Soil moisture (qualitative)
     BatteryVoltage(u16),                   // Battery voltage in mV
     SoilMoistureRaw(SoilMoistureRawLevel), // Raw soil moisture sensor value
-    PumpTrigger(bool),                     // Whether pump should be triggered
 }
 
 #[derive(Debug, Default)]
@@ -150,7 +156,6 @@ impl Sensor {
             Sensor::WaterLevel(_) => "waterlevel",
             Sensor::BatteryVoltage(_) => "batteryvoltage",
             Sensor::SoilMoistureRaw(_) => "moistureraw",
-            Sensor::PumpTrigger(_) => "pumptrigger",
         }
     }
 
@@ -163,7 +168,6 @@ impl Sensor {
             Sensor::WaterLevel(_) => "Drainage water level",
             Sensor::BatteryVoltage(_) => "Battery voltage",
             Sensor::SoilMoistureRaw(_) => "Soil moisture (mV)",
-            Sensor::PumpTrigger(_) => "Pump trigger",
         }
     }
 
@@ -176,7 +180,6 @@ impl Sensor {
             Sensor::WaterLevel(v) => v.to_string(),
             Sensor::BatteryVoltage(v) => v.to_string(),
             Sensor::SoilMoistureRaw(v) => v.to_string(),
-            Sensor::PumpTrigger(v) => v.to_string(),
         }
     }
 }

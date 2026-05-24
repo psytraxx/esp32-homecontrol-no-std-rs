@@ -33,7 +33,7 @@ use esp_rtos::main;
 use log::{error, info};
 use relay_task::relay_task;
 use rtc_memory::RtcCell;
-use sensors_task::{sensor_task, SensorPeripherals};
+use sensors::{sensor_task, SensorPeripherals};
 use sleep::enter_deep;
 use static_cell::StaticCell;
 use update_task::update_task;
@@ -47,7 +47,7 @@ mod display;
 mod domain;
 mod relay_task;
 mod rtc_memory;
-mod sensors_task;
+mod sensors;
 mod sleep;
 mod update_task;
 mod wifi;
@@ -171,6 +171,8 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
 
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
     info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
+    // Give the USB CDC logger time to flush pending output before powering down
+    Timer::after(Duration::from_millis(100)).await;
     let mut wake_up_btn_pin = peripherals.GPIO14;
     enter_deep(&mut wake_up_btn_pin, peripherals.LPWR, deep_sleep_duration);
 }

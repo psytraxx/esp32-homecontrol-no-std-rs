@@ -3,7 +3,7 @@ use alloc::{
     string::{String, ToString},
 };
 use core::{num::NonZero, num::ParseIntError, str};
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select3, Either3};
 use embassy_net::{
     dns::{DnsQueryType, Error as DnsError},
     tcp::{ConnectError, TcpSocket},
@@ -31,11 +31,12 @@ use strum::IntoEnumIterator;
 
 use crate::{
     config::{
-        AWAKE_DURATION_SECONDS, DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
-        HOMEASSISTANT_SENSOR_TOPIC, HOMEASSISTANT_VALVE_TOPIC,
+        DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_TOPIC,
+        HOMEASSISTANT_VALVE_TOPIC,
     },
     display::{self, Display, DisplayTrait},
-    domain::{Sensor, SensorData, WaterLevel},
+    domain::{Actuator, Sensor, SensorData, WaterLevel},
+    wifi::STOP_WIFI_SIGNAL,
     DISCOVERY_MESSAGES_SENT, ENABLE_PUMP,
 };
 
@@ -106,15 +107,15 @@ pub async fn update_task(
         loop {
             let mut action_to_perform = MqttAction::None;
 
-            match select(receiver.receive(), client.poll()).await {
-                Either::First(sensor_data) => {
+            match select3(receiver.receive(), client.poll(), STOP_WIFI_SIGNAL.wait()).await {
+                Either3::First(sensor_data) => {
                     if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await
                     {
                         error!("Error handling sensor data: {:?}. Reconnecting...", e);
                         continue 'reconnect; // Break inner loop, go to outer loop for reconnect
                     }
                 }
-                Either::Second(result) => match result {
+                Either3::Second(result) => match result {
                     Ok(Event::Publish(e)) => {
                         action_to_perform = process_received_mqtt_message(
                             e.topic.as_ref().as_str(),
@@ -128,6 +129,13 @@ pub async fn update_task(
                         continue 'reconnect; // Break inner loop, go to outer loop for reconnect
                     }
                 },
+                Either3::Third(_) => {
+                    info!("Stop signal received, enabling display powersave");
+                    if let Err(e) = display.enable_powersave() {
+                        error!("Error enabling display powersave: {:?}", e);
+                    }
+                    return;
+                }
             }
 
             match action_to_perform {
@@ -268,23 +276,24 @@ async fn publish_sensor_data(
     client: &mut MqttClientImpl<'_>,
     sensor_data: &SensorData,
 ) -> Result<(), Error> {
-    // check if we can enable the pump
+    // Only allow the pump when the drainage water level is empty (pot not overwatered)
     let allow_enable_pump = sensor_data
         .data
         .iter()
         .any(|entry| matches!(entry, Sensor::WaterLevel(WaterLevel::Empty)));
 
-    sensor_data.data.iter().for_each(|entry| {
-        if let Sensor::PumpTrigger(enabled) = entry {
-            let enabled = *enabled;
-            if allow_enable_pump {
-                info!("Pump trigger value: {} - updating pump state", enabled);
-                update_pump_state(enabled);
-            } else {
-                update_pump_state(false);
+    for actuator in &sensor_data.actuators {
+        match actuator {
+            Actuator::Pump(enabled) => {
+                if allow_enable_pump {
+                    info!("Pump trigger value: {} - updating pump state", enabled);
+                    update_pump_state(*enabled);
+                } else {
+                    update_pump_state(false);
+                }
             }
         }
-    });
+    }
 
     for s in &sensor_data.data {
         let key = s.topic();
@@ -316,8 +325,6 @@ async fn process_display(
     sensor_data: &SensorData,
 ) -> Result<(), Error> {
     display.write_multiline(&format!("{sensor_data}"))?;
-    Timer::after(Duration::from_secs(AWAKE_DURATION_SECONDS)).await;
-    display.enable_powersave()?;
     Ok(())
 }
 
