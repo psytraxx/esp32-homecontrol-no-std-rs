@@ -15,7 +15,8 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Sensor sampling constants (`PUMP_TRIGGER_INTERVAL`, `USB_CHARGING_VOLTAGE_MV`, `DHT11_WARMUP_DELAY_MS`, `SENSOR_WARMUP_DELAY_MS`, `SENSOR_SAMPLE_COUNT`) moved to `config.rs`
 
 ### Changed
-- `update_task.rs`: fixed MQTT event loop starvation — the inner select now uses `select3` to race sensor data, MQTT poll, and `STOP_WIFI_SIGNAL` simultaneously; when the stop signal fires the display `enable_powersave()` is called immediately before the task exits, preserving power-save behaviour without blocking MQTT for 30 s
+- `update_task.rs`: fixed MQTT event loop starvation — the inner select now uses `select3` to race sensor data, MQTT poll, and `STOP_UPDATE_TASK_SIGNAL` simultaneously; when the stop signal fires the display `enable_powersave()` is called immediately before the task exits, preserving power-save behaviour without blocking MQTT for 30 s
+- `update_task.rs` / `main.rs`: introduced `DISPLAY_POWERSAVE_SIGNAL` (separate from `STOP_WIFI_SIGNAL`) — Embassy `Signal` stores only one waker, so sharing a single signal between two tasks meant only one task was reliably notified; each task now has its own signal fired together from `main`
 - `enter_deep` in `sleep.rs`: removed log statement that fired immediately before `rtc.sleep()` (USB CDC has no chance to flush it); caller in `main.rs` now logs + awaits 100 ms before entering sleep so all pending output is transmitted
 
 ### Documentation

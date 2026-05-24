@@ -36,7 +36,7 @@ use rtc_memory::RtcCell;
 use sensors::{sensor_task, SensorPeripherals};
 use sleep::enter_deep;
 use static_cell::StaticCell;
-use update_task::update_task;
+use update_task::{update_task, DISPLAY_POWERSAVE_SIGNAL};
 use wifi::{connect_to_wifi, STOP_WIFI_SIGNAL};
 
 extern crate alloc;
@@ -165,6 +165,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     Timer::after(awake_duration).await;
     info!("Request to disconnect wifi");
     STOP_WIFI_SIGNAL.signal(());
+    DISPLAY_POWERSAVE_SIGNAL.signal(());
 
     // set power pin to low to save power
     power_pin.set_low();

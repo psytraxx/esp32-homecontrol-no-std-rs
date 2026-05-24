@@ -9,7 +9,11 @@ use embassy_net::{
     tcp::{ConnectError, TcpSocket},
     Stack,
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
+use embassy_sync::{
+    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
+    channel::Receiver,
+    signal::Signal,
+};
 use embassy_time::{Delay, Duration, Timer};
 use log::{error, info, warn};
 use rust_mqtt::{
@@ -36,9 +40,14 @@ use crate::{
     },
     display::{self, Display, DisplayTrait},
     domain::{Actuator, Sensor, SensorData, WaterLevel},
-    wifi::STOP_WIFI_SIGNAL,
     DISCOVERY_MESSAGES_SENT, ENABLE_PUMP,
 };
+
+/// Signal fired by `main` when the awake window is over, requesting the display
+/// to enter power-save mode. Kept separate from `STOP_WIFI_SIGNAL` because
+/// Embassy `Signal` stores only one waker — sharing a signal between two tasks
+/// means only one reliably receives it.
+pub static DISPLAY_POWERSAVE_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 const BUFFER_SIZE: usize = 4096;
 
@@ -107,7 +116,13 @@ pub async fn update_task(
         loop {
             let mut action_to_perform = MqttAction::None;
 
-            match select3(receiver.receive(), client.poll(), STOP_WIFI_SIGNAL.wait()).await {
+            match select3(
+                receiver.receive(),
+                client.poll(),
+                DISPLAY_POWERSAVE_SIGNAL.wait(),
+            )
+            .await
+            {
                 Either3::First(sensor_data) => {
                     if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await
                     {
@@ -130,7 +145,7 @@ pub async fn update_task(
                     }
                 },
                 Either3::Third(_) => {
-                    info!("Stop signal received, enabling display powersave");
+                    info!("Display powersave signal received, sleeping display");
                     if let Err(e) = display.enable_powersave() {
                         error!("Error enabling display powersave: {:?}", e);
                     }
