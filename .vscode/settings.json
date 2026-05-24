@@ -5,22 +5,5 @@
   "rust-analyzer.server.extraEnv": {
     "RUSTUP_TOOLCHAIN": "stable"
   },
-  "rust-analyzer.cargo.extraEnv": {
-    "RUSTUP_TOOLCHAIN": "esp",
-    "WIFI_SSID": "placeholder",
-    "WIFI_PSK": "placeholder",
-    "MQTT_HOSTNAME": "localhost",
-    "MQTT_USERNAME": "placeholder",
-    "MQTT_PASSWORD": "placeholder",
-    "MQTT_PORT": "1883"
-  },
-  "rust-analyzer.checkOnSave.extraEnv": {
-    "WIFI_SSID": "placeholder",
-    "WIFI_PSK": "placeholder",
-    "MQTT_HOSTNAME": "localhost",
-    "MQTT_USERNAME": "placeholder",
-    "MQTT_PASSWORD": "placeholder",
-    "MQTT_PORT": "1883"
-  },
   "chat.useAgentSkills": true
 }
