@@ -15,6 +15,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Sensor sampling constants (`PUMP_TRIGGER_INTERVAL`, `USB_CHARGING_VOLTAGE_MV`, `DHT11_WARMUP_DELAY_MS`, `SENSOR_WARMUP_DELAY_MS`, `SENSOR_SAMPLE_COUNT`) moved to `config.rs`
 
 ### Changed
+- `enter_deep` in `sleep.rs`: removed log statement that fired immediately before `rtc.sleep()` (USB CDC has no chance to flush it); caller in `main.rs` now logs + awaits 100 ms before entering sleep so all pending output is transmitted
 - MQTT discovery payload now includes `force_update: true` for numeric sensors — prevents Home Assistant recorder from deduplicating unchanged values, giving full hourly history resolution
 - Updated `CLAUDE.md` — added changelog and code quality workflow requirements
 - `PumpTrigger(bool)` removed from the `Sensor` enum — it was incorrectly appearing as a Home Assistant sensor entity; pump state now lives in `SensorData.actuators: Vec<Actuator, 1>`

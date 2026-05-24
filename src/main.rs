@@ -171,6 +171,8 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
 
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
     info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
+    // Give the USB CDC logger time to flush pending output before powering down
+    Timer::after(Duration::from_millis(100)).await;
     let mut wake_up_btn_pin = peripherals.GPIO14;
     enter_deep(&mut wake_up_btn_pin, peripherals.LPWR, deep_sleep_duration);
 }
