@@ -4,8 +4,8 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal}
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals;
 use esp_radio::wifi::{
-    self, sta::StationConfig, Config as WifiConfig, ControllerConfig, Interface, WifiController,
-    WifiError,
+    self, Config as WifiConfig, ControllerConfig, Interface, WifiController, WifiError,
+    sta::StationConfig,
 };
 use log::{error, info};
 use static_cell::StaticCell;

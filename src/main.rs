@@ -20,12 +20,12 @@ use embassy_time::{Delay, Duration, Timer};
 use esp_alloc::heap_allocator;
 use esp_backtrace as _;
 use esp_hal::{
+    Config,
     gpio::{Level, Output, OutputConfig, Pin},
     ram,
     rng::Rng,
     system::software_reset,
     timer::timg::TimerGroup,
-    Config,
 };
 use esp_println::logger::init_logger;
 use esp_radio::wifi::WifiError;
@@ -33,11 +33,11 @@ use esp_rtos::main;
 use log::{error, info};
 use relay_task::relay_task;
 use rtc_memory::RtcCell;
-use sensors::{sensor_task, SensorPeripherals};
+use sensors::{SensorPeripherals, sensor_task};
 use sleep::enter_deep;
 use static_cell::StaticCell;
-use update_task::{update_task, DISPLAY_POWERSAVE_SIGNAL};
-use wifi::{connect_to_wifi, STOP_WIFI_SIGNAL};
+use update_task::{DISPLAY_POWERSAVE_SIGNAL, update_task};
+use wifi::{STOP_WIFI_SIGNAL, connect_to_wifi};
 
 extern crate alloc;
 

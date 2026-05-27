@@ -3,11 +3,11 @@ use alloc::{
     string::{String, ToString},
 };
 use core::{num::NonZero, num::ParseIntError, str};
-use embassy_futures::select::{select3, Either3};
+use embassy_futures::select::{Either3, select3};
 use embassy_net::{
+    Stack,
     dns::{DnsQueryType, Error as DnsError},
     tcp::{ConnectError, TcpSocket},
-    Stack,
 };
 use embassy_sync::{
     blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
@@ -17,30 +17,30 @@ use embassy_sync::{
 use embassy_time::{Delay, Duration, Timer};
 use log::{error, info, warn};
 use rust_mqtt::{
+    Bytes,
     buffer::AllocBuffer,
     client::{
+        Client, MqttError,
         event::Event,
         options::{
             ConnectOptions, PublicationOptions, RetainHandling, SubscriptionOptions, TopicReference,
         },
-        Client, MqttError,
     },
     config::{KeepAlive, SessionExpiryInterval},
     types::{MqttBinary, MqttString, QoS, ReasonCode, TopicName},
-    Bytes,
 };
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use static_cell::StaticCell;
 use strum::IntoEnumIterator;
 
 use crate::{
+    DISCOVERY_MESSAGES_SENT, ENABLE_PUMP,
     config::{
         DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_TOPIC,
         HOMEASSISTANT_VALVE_TOPIC,
     },
     display::{self, Display, DisplayTrait},
     domain::{Actuator, Sensor, SensorData, WaterLevel},
-    DISCOVERY_MESSAGES_SENT, ENABLE_PUMP,
 };
 
 /// Signal fired by `main` when the awake window is over, requesting the display
@@ -350,7 +350,10 @@ fn process_received_mqtt_message(topic: &str, data: &[u8], pump_set_topic: &str)
     if let Some(message) = msg {
         if topic == pump_set_topic {
             if message.is_empty() {
-                info!("Received empty message on '{}', likely the cleared retained message. Ignoring.", topic);
+                info!(
+                    "Received empty message on '{}', likely the cleared retained message. Ignoring.",
+                    topic
+                );
             } else {
                 let state = message == "OPEN";
                 info!("Pump command received on '{}'. State: {}", topic, state);

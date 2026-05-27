@@ -3,10 +3,10 @@ use heapless::Vec;
 use log::{error, info};
 
 use crate::{
+    BOOT_COUNT,
     config::{DHT11_WARMUP_DELAY_MS, PUMP_TRIGGER_INTERVAL, SENSOR_SAMPLE_COUNT},
     dht11::{Dht11, Measurement},
     domain::{Actuator, Sensor, SensorData, WaterLevel},
-    BOOT_COUNT,
 };
 
 use super::adc::{calculate_average, read_battery_voltage, read_powered_adc_sensor};
@@ -50,10 +50,9 @@ pub(super) async fn collect_all_sensor_data(hardware: &mut SensorHardware<'stati
             &mut hardware.moisture_power_pin,
         )
         .await
+            && soil_moisture_samples.push(moisture).is_err()
         {
-            if soil_moisture_samples.push(moisture).is_err() {
-                error!("Failed to push SoilMoisture to sensor_data");
-            }
+            error!("Failed to push SoilMoisture to sensor_data");
         }
 
         // Read water level (powered ADC sensor)
@@ -63,19 +62,17 @@ pub(super) async fn collect_all_sensor_data(hardware: &mut SensorHardware<'stati
             &mut hardware.water_level_power_pin,
         )
         .await
+            && water_level_samples.push(water_level).is_err()
         {
-            if water_level_samples.push(water_level).is_err() {
-                error!("Failed to push WaterLevel to sensor_data");
-            }
+            error!("Failed to push WaterLevel to sensor_data");
         }
 
         // Read battery voltage
         if let Some(battery_voltage) =
             read_battery_voltage(&mut hardware.adc1, &mut hardware.battery_pin).await
+            && battery_voltage_samples.push(battery_voltage).is_err()
         {
-            if battery_voltage_samples.push(battery_voltage).is_err() {
-                error!("Failed to push BatteryVoltage to sensor_data");
-            }
+            error!("Failed to push BatteryVoltage to sensor_data");
         }
     }
 

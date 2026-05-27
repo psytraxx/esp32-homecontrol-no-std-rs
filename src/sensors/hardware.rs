@@ -1,8 +1,8 @@
 use esp_hal::{
+    Blocking,
     analog::adc::{Adc, AdcCalCurve, AdcCalLine, AdcConfig, AdcPin, Attenuation},
     gpio::{DriveMode, Level, Output, OutputConfig, Pull},
-    peripherals::{ADC1, ADC2, GPIO1, GPIO11, GPIO12, GPIO16, GPIO21, GPIO4},
-    Blocking,
+    peripherals::{ADC1, ADC2, GPIO1, GPIO4, GPIO11, GPIO12, GPIO16, GPIO21},
 };
 
 /// ADC and GPIO handles — private to the sensors module.
