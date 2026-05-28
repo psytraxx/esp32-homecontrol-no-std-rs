@@ -1,12 +1,19 @@
-
 {
+  "editor.formatOnSave": true,
   "rust-analyzer.cargo.allTargets": false,
   "rust-analyzer.cargo.target": "xtensa-esp32s3-none-elf",
+  "rust-analyzer.check.command": "clippy",
   "rust-analyzer.server.extraEnv": {
     "RUSTUP_TOOLCHAIN": "stable"
   },
-  "rust-analyzer.cargo.extraEnv": {
-    "RUSTUP_TOOLCHAIN": "esp"
-  },
+  "rust-analyzer.check.overrideCommand": [
+    "cargo",
+    "+esp",
+    "check",
+    "--workspace",
+    "--message-format=json",
+    "--target",
+    "xtensa-esp32s3-none-elf"
+  ],
   "chat.useAgentSkills": true
 }
