@@ -27,21 +27,24 @@ pub(super) async fn collect_all_sensor_data(hardware: &mut SensorHardware<'stati
     let mut battery_voltage_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut water_level_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
 
-    for i in 0..SENSOR_SAMPLE_COUNT {
-        info!("Reading sensor data {}/{}", (i + 1), SENSOR_SAMPLE_COUNT);
-
-        // Read DHT11 (temperature & humidity)
-        if let Some(measurement) = read_dht11_sensor(&mut hardware.dht11_pin).await {
-            if air_temperature_samples
-                .push(measurement.temperature)
-                .is_err()
-            {
-                error!("Failed to push AirTemperature to sensor_data");
-            }
-            if air_humidity_samples.push(measurement.humidity).is_err() {
-                error!("Failed to push AirHumidity to sensor_data");
-            }
+    // DHT11 is read once per wake cycle: it needs a 2s warmup after power-on and
+    // cannot be sampled faster than ~1Hz anyway. Filling all sample slots from one
+    // reading keeps the averaging logic intact without burning 2s × N of idle time.
+    if let Some(measurement) = read_dht11_sensor(&mut hardware.dht11_pin).await {
+        for _ in 0..SENSOR_SAMPLE_COUNT {
+            let _ = air_temperature_samples.push(measurement.temperature);
+            let _ = air_humidity_samples.push(measurement.humidity);
         }
+    } else {
+        error!("DHT11 read failed");
+    }
+
+    for i in 0..SENSOR_SAMPLE_COUNT {
+        info!(
+            "Reading ADC sensor data {}/{}",
+            (i + 1),
+            SENSOR_SAMPLE_COUNT
+        );
 
         // Read soil moisture (powered ADC sensor)
         if let Some(moisture) = read_powered_adc_sensor(

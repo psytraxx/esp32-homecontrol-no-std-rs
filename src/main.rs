@@ -21,10 +21,12 @@ use esp_alloc::heap_allocator;
 use esp_backtrace as _;
 use esp_hal::{
     Config,
+    clock::CpuClock,
     gpio::{Level, Output, OutputConfig, Pin},
     ram,
     rng::Rng,
-    system::software_reset,
+    rtc_cntl::wakeup_cause,
+    system::{SleepSource, software_reset},
     timer::timg::TimerGroup,
 };
 use esp_println::logger::init_logger;
@@ -87,7 +89,7 @@ async fn main(spawner: Spawner) {
 }
 
 async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
-    let peripherals = esp_hal::init(Config::default());
+    let peripherals = esp_hal::init(Config::default().with_cpu_clock(CpuClock::_80MHz));
 
     heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 73744);
 
@@ -96,7 +98,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
         esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
     esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
 
-    // This IO15 must be set to HIGH, otherwise nothing will be displayed when USB is not connected.
+    // GPIO15 must be HIGH for the display to receive power (even when display is unused).
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
     power_pin.set_high();
 
@@ -122,18 +124,22 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
         d7: peripherals.GPIO48.degrade(),
     };
 
-    let mut display = Display::new(display_peripherals, Delay)?;
+    // Skip display init on timer wakes — nobody is watching.
+    let button_wake = matches!(wakeup_cause(), SleepSource::Ext0);
+    let mut display = Display::new(display_peripherals, Delay, button_wake)?;
 
-    if let Some(stack_config) = stack.config_v4() {
-        display.write_multiline(
-            format!(
-                "Client IP: {}\nBoot count: {}",
-                stack_config.address, boot_count
-            )
-            .as_str(),
-        )?;
-    } else {
-        error!("Failed to get stack config");
+    if button_wake {
+        if let Some(stack_config) = stack.config_v4() {
+            display.write_multiline(
+                format!(
+                    "Client IP: {}\nBoot count: {}",
+                    stack_config.address, boot_count
+                )
+                .as_str(),
+            )?;
+        } else {
+            error!("Failed to get stack config");
+        }
     }
 
     info!("Create channel");

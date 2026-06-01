@@ -15,6 +15,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Sensor sampling constants (`PUMP_TRIGGER_INTERVAL`, `USB_CHARGING_VOLTAGE_MV`, `DHT11_WARMUP_DELAY_MS`, `SENSOR_WARMUP_DELAY_MS`, `SENSOR_SAMPLE_COUNT`) moved to `config.rs`
 
 ### Changed
+- Power: CPU clock reduced from 240 MHz to 80 MHz — sufficient for I/O-bound workload, cuts CPU dynamic power ~3×
+- Power: display is initialised in sleep state on timer wakes (nobody present); only button wakes (Ext0) turn on the backlight and draw sensor data — saves ~20–30 mA for the entire awake window on unattended cycles
+- Power: DHT11 is now read once per wake cycle (one 2 s warmup) instead of once per sample (5 × 2 s = 10 s warmup). The single reading is replicated across all sample slots so the averaging logic is unchanged. Saves ~8 s of active time per wake.
 - `update_task.rs`: fixed MQTT event loop starvation — the inner select now uses `select3` to race sensor data, MQTT poll, and `STOP_UPDATE_TASK_SIGNAL` simultaneously; when the stop signal fires the display `enable_powersave()` is called immediately before the task exits, preserving power-save behaviour without blocking MQTT for 30 s
 - `update_task.rs` / `main.rs`: introduced `DISPLAY_POWERSAVE_SIGNAL` (separate from `STOP_WIFI_SIGNAL`) — Embassy `Signal` stores only one waker, so sharing a single signal between two tasks meant only one task was reliably notified; each task now has its own signal fired together from `main`
 - `enter_deep` in `sleep.rs`: removed log statement that fired immediately before `rtc.sleep()` (USB CDC has no chance to flush it); caller in `main.rs` now logs + awaits 100 ms before entering sleep so all pending output is transmitted

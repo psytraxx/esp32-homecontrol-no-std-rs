@@ -66,7 +66,10 @@ pub struct DisplayPeripherals {
 }
 
 impl<D: DelayNs> Display<'_, D> {
-    pub fn new(p: DisplayPeripherals, mut delay: D) -> Result<Self, Error> {
+    /// Create the display. When `enabled` is false (timer wake, no user present),
+    /// the display is initialized in power-save state — backlight stays off and
+    /// no pixels are driven, saving ~20–30mA during the awake window.
+    pub fn new(p: DisplayPeripherals, mut delay: D, enabled: bool) -> Result<Self, Error> {
         let backlight = Output::new(p.backlight, Level::Low, OutputConfig::default());
 
         let dc = Output::new(p.dc, Level::Low, OutputConfig::default());
@@ -91,7 +94,7 @@ impl<D: DelayNs> Display<'_, D> {
 
         let di = ParallelInterface::new(bus, dc, wr);
 
-        let display = Builder::new(mipidsi::models::ST7789, di)
+        let mut display = Builder::new(mipidsi::models::ST7789, di)
             .display_size(DISPLAY_HEIGHT, DISPLAY_WIDTH)
             .display_offset((240 - DISPLAY_HEIGHT) / 2, 0)
             .orientation(Orientation::new().rotate(Rotation::Deg270))
@@ -99,6 +102,10 @@ impl<D: DelayNs> Display<'_, D> {
             .reset_pin(rst)
             .init(&mut delay)
             .map_err(|_| Error::InitError)?;
+
+        if !enabled {
+            display.sleep(&mut delay)?;
+        }
 
         Ok(Self {
             display,
