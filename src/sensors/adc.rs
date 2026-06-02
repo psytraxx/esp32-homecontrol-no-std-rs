@@ -48,25 +48,3 @@ where
         }
     }
 }
-
-/// Calculate the trimmed mean of a sample slice: remove the min and max, then average the rest.
-///
-/// Returns `None` if fewer than 3 samples are present.
-pub(super) fn calculate_average<T>(samples: &mut [T]) -> Option<T>
-where
-    T: Copy + Ord + Into<i32>,
-    i32: TryInto<T>,
-{
-    if samples.len() <= 2 {
-        return None;
-    }
-
-    // Sort and remove outliers (first = lowest, last = highest)
-    samples.sort_unstable();
-    let samples = &samples[1..samples.len() - 1];
-
-    let sum: i32 = samples.iter().map(|&x| x.into()).sum();
-    sum.checked_div(samples.len() as i32)
-        .and_then(|avg| avg.try_into().ok())
-        .or(None)
-}
