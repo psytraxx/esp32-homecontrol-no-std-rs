@@ -17,7 +17,7 @@ use embassy_sync::{
     signal::Signal,
 };
 use embassy_time::{Delay, Duration, Timer};
-use esp_alloc::heap_allocator;
+use esp_alloc::{heap_allocator, psram_allocator};
 use esp_backtrace as _;
 use esp_hal::{
     Config,
@@ -92,6 +92,8 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let peripherals = esp_hal::init(Config::default().with_cpu_clock(CpuClock::_80MHz));
 
     heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 73744);
+
+    psram_allocator!(peripherals.PSRAM, esp_hal::psram);
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_interrupt =
