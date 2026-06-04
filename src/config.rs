@@ -14,7 +14,7 @@ pub const PUMP_TRIGGER_INTERVAL: u32 = 10;
 /// Battery voltage above this threshold (mV) indicates USB charging — skip reading
 pub const USB_CHARGING_VOLTAGE_MV: u16 = 4100;
 /// Warmup delay for DHT11 before each read (ms)
-pub const DHT11_WARMUP_DELAY_MS: u64 = 2000;
+pub const DHT11_WARMUP_DELAY_MS: u64 = 1000;
 /// Warmup delay for powered ADC sensors (moisture, water level) before each read (ms)
 pub const SENSOR_WARMUP_DELAY_MS: u64 = 50;
 /// Number of samples to collect per sensor per cycle (min/max trimmed, rest averaged)

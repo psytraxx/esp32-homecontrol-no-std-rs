@@ -73,8 +73,8 @@ where
 /// Returns `None` if fewer than 3 samples are present.
 pub(super) fn calculate_average<T>(samples: &mut [T]) -> Option<T>
 where
-    T: Copy + Ord + Into<u32>,
-    u32: TryInto<T>,
+    T: Copy + Ord + Into<i32>,
+    i32: TryInto<T>,
 {
     if samples.len() <= 2 {
         return None;
@@ -84,8 +84,8 @@ where
     samples.sort_unstable();
     let samples = &samples[1..samples.len() - 1];
 
-    let sum: u32 = samples.iter().map(|&x| x.into()).sum();
-    sum.checked_div(samples.len() as u32)
+    let sum: i32 = samples.iter().map(|&x| x.into()).sum();
+    sum.checked_div(samples.len() as i32)
         .and_then(|avg| avg.try_into().ok())
         .or(None)
 }
