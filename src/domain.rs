@@ -101,7 +101,7 @@ impl From<u16> for WaterLevel {
 #[derive(Debug, EnumIter)]
 pub enum Sensor {
     WaterLevel(WaterLevel),                // Water at pot base
-    AirTemperature(u8),                    // Air temperature in °C
+    AirTemperature(i8),                    // Air temperature in °C
     AirHumidity(u8),                       // Air humidity in %
     SoilMoisture(MoistureLevel),           // Soil moisture (qualitative)
     BatteryVoltage(u16),                   // Battery voltage in mV

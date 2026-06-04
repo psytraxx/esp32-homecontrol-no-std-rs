@@ -257,6 +257,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "dht-sensor"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fc206d619f4f078a875fccff279c5e78ec3e00e4557e1dbfda6e488208621e99"
+dependencies = [
+ "embedded-hal 1.0.0",
+]
+
+[[package]]
 name = "digest"
 version = "0.10.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1027,6 +1036,7 @@ name = "esp32-homecontrol"
 version = "0.1.0"
 dependencies = [
  "critical-section",
+ "dht-sensor",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",

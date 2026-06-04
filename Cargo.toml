@@ -63,6 +63,7 @@ nb = { version = "1.1.0", features = [] }
 strum = { version = "0.28.0", default-features = false }
 strum_macros = "0.28.0"
 critical-section = "1.2.0"
+dht-sensor = "0.3.0"
 
 [profile.dev]
 # Rust debug is too slow.

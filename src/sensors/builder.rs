@@ -1,3 +1,4 @@
+use dht_sensor::dht11::Reading;
 use embassy_time::{Delay, Duration, Timer};
 use heapless::Vec;
 use log::{error, info};
@@ -5,7 +6,6 @@ use log::{error, info};
 use crate::{
     BOOT_COUNT,
     config::{DHT11_WARMUP_DELAY_MS, PUMP_TRIGGER_INTERVAL, SENSOR_SAMPLE_COUNT},
-    dht11::{Dht11, Measurement},
     domain::{Actuator, Sensor, SensorData, WaterLevel},
 };
 
@@ -13,16 +13,16 @@ use super::adc::{calculate_average, read_battery_voltage, read_powered_adc_senso
 use super::hardware::SensorHardware;
 
 /// Read a single DHT11 measurement after the required warmup delay.
-async fn read_dht11_sensor(dht11_pin: &mut esp_hal::gpio::Flex<'static>) -> Option<Measurement> {
-    let mut dht11_sensor = Dht11::new(dht11_pin, Delay);
+async fn read_dht11_sensor(dht11_pin: &mut esp_hal::gpio::Flex<'static>) -> Option<Reading> {
+    let dht11_sensor = dht_sensor::dht11::blocking::read(&mut Delay, dht11_pin).ok();
     Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MS)).await;
-    dht11_sensor.read().ok()
+    dht11_sensor
 }
 
 /// Collect SENSOR_SAMPLE_COUNT readings from every sensor and build the averaged SensorData.
 pub(super) async fn collect_all_sensor_data(hardware: &mut SensorHardware<'static>) -> SensorData {
     let mut air_humidity_samples: Vec<u8, SENSOR_SAMPLE_COUNT> = Vec::new();
-    let mut air_temperature_samples: Vec<u8, SENSOR_SAMPLE_COUNT> = Vec::new();
+    let mut air_temperature_samples: Vec<i8, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut soil_moisture_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut battery_voltage_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut water_level_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
@@ -33,7 +33,7 @@ pub(super) async fn collect_all_sensor_data(hardware: &mut SensorHardware<'stati
     if let Some(measurement) = read_dht11_sensor(&mut hardware.dht11_pin).await {
         for _ in 0..SENSOR_SAMPLE_COUNT {
             let _ = air_temperature_samples.push(measurement.temperature);
-            let _ = air_humidity_samples.push(measurement.humidity);
+            let _ = air_humidity_samples.push(measurement.relative_humidity);
         }
     } else {
         error!("DHT11 read failed");
@@ -91,7 +91,7 @@ pub(super) async fn collect_all_sensor_data(hardware: &mut SensorHardware<'stati
 /// Average the raw sample vecs and assemble the final SensorData.
 fn build_sensor_data(
     mut air_humidity_samples: Vec<u8, SENSOR_SAMPLE_COUNT>,
-    mut air_temperature_samples: Vec<u8, SENSOR_SAMPLE_COUNT>,
+    mut air_temperature_samples: Vec<i8, SENSOR_SAMPLE_COUNT>,
     mut soil_moisture_samples: Vec<u16, SENSOR_SAMPLE_COUNT>,
     mut battery_voltage_samples: Vec<u16, SENSOR_SAMPLE_COUNT>,
     mut water_level_samples: Vec<u16, SENSOR_SAMPLE_COUNT>,

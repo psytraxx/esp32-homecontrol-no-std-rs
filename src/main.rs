@@ -44,7 +44,6 @@ use wifi::{STOP_WIFI_SIGNAL, connect_to_wifi};
 extern crate alloc;
 
 mod config;
-mod dht11;
 mod display;
 mod domain;
 mod relay_task;
