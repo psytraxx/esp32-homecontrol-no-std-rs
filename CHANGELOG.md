@@ -7,6 +7,13 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- Pump trigger logic replaced: pump now activates automatically when soil moisture reads `Dry` (instead of every Nth boot). Manual control via MQTT `pump/set OPEN` still works. Both paths are blocked when the drainage water-level sensor reports `Full`.
+- Water-level interlock now also covers the manual MQTT path (`process_received_mqtt_message` receives `water_level_ok` and drops `OPEN` commands when overflow is detected).
+
+### Removed
+- `PUMP_TRIGGER_INTERVAL` constant and boot-count modulo scheduling removed from `config.rs` and `sensors/builder.rs`
+
 ### Added
 - `HARDWARE_V2.md` — sensor upgrade plan with confirmed BOM: AHT20+BMP280 combo, Adafruit STEMMA soil sensor, INA219 power monitor; all I2C, STEMMA QT connectors; Rust crate analysis, wiring diagram, firmware checklist
 - Mermaid wiring diagrams for V1 (current) and V2 (planned) hardware added to `README.md`

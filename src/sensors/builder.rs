@@ -4,9 +4,8 @@ use heapless::Vec;
 use log::{error, info};
 
 use crate::{
-    BOOT_COUNT,
-    config::{DHT11_WARMUP_DELAY_MS, PUMP_TRIGGER_INTERVAL, SENSOR_SAMPLE_COUNT},
-    domain::{Actuator, Sensor, SensorData, WaterLevel},
+    config::{DHT11_WARMUP_DELAY_MS, SENSOR_SAMPLE_COUNT},
+    domain::{Actuator, MoistureLevel, Sensor, SensorData, WaterLevel},
 };
 
 use super::adc::{calculate_average, read_battery_voltage, read_powered_adc_sensor};
@@ -149,7 +148,8 @@ fn build_sensor_data(
 
     // Process soil moisture
     if let Some(avg_soil_moisture) = calculate_average(&mut soil_moisture_samples) {
-        info!("Raw Moisture: {}", avg_soil_moisture);
+        let moisture_level = MoistureLevel::from(avg_soil_moisture);
+        info!("Raw Moisture: {} ({})", avg_soil_moisture, moisture_level);
         if sensor_data
             .data
             .push(Sensor::SoilMoistureRaw(avg_soil_moisture.into()))
@@ -159,24 +159,20 @@ fn build_sensor_data(
         }
         if sensor_data
             .data
-            .push(Sensor::SoilMoisture(avg_soil_moisture.into()))
+            .push(Sensor::SoilMoisture(moisture_level))
             .is_err()
         {
             error!("Failed to push SoilMoisture to sensor_data");
         }
+
+        // Trigger pump automatically when soil is dry; water-level interlock is enforced
+        // in update_task before the signal reaches the relay.
+        let pump_needed = matches!(MoistureLevel::from(avg_soil_moisture), MoistureLevel::Dry);
+        if sensor_data.actuators.push(Actuator::Pump(pump_needed)).is_err() {
+            error!("Failed to push Pump actuator");
+        }
     } else {
         error!("Unable to generate average value of soil moisture");
-    }
-
-    // Record pump actuator state (triggers every PUMP_TRIGGER_INTERVAL boots)
-    let boot_count = BOOT_COUNT.get();
-    let pump_enabled = boot_count.is_multiple_of(PUMP_TRIGGER_INTERVAL);
-    if sensor_data
-        .actuators
-        .push(Actuator::Pump(pump_enabled))
-        .is_err()
-    {
-        error!("Failed to push Pump actuator");
     }
 
     // Process battery voltage

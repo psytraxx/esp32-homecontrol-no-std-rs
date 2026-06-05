@@ -113,6 +113,7 @@ pub async fn update_task(
         info!("Subscribed to pump command topic: {}", pump_set_topic);
 
         // Inner loop for processing events while connected
+        let mut water_level_ok = true; // updated on each sensor reading; safe default is allow
         loop {
             let mut action_to_perform = MqttAction::None;
 
@@ -124,6 +125,11 @@ pub async fn update_task(
             .await
             {
                 Either3::First(sensor_data) => {
+                    // Snapshot water level before moving sensor_data into the handler
+                    water_level_ok = sensor_data
+                        .data
+                        .iter()
+                        .any(|e| matches!(e, Sensor::WaterLevel(WaterLevel::Empty)));
                     if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await
                     {
                         error!("Error handling sensor data: {:?}. Reconnecting...", e);
@@ -136,6 +142,7 @@ pub async fn update_task(
                             e.topic.as_ref().as_str(),
                             e.message.as_ref(),
                             &pump_set_topic,
+                            water_level_ok,
                         );
                     }
                     Ok(e) => info!("Received event {:?}", e),
@@ -343,7 +350,12 @@ async fn process_display(
     Ok(())
 }
 
-fn process_received_mqtt_message(topic: &str, data: &[u8], pump_set_topic: &str) -> MqttAction {
+fn process_received_mqtt_message(
+    topic: &str,
+    data: &[u8],
+    pump_set_topic: &str,
+    water_level_ok: bool,
+) -> MqttAction {
     let msg = str::from_utf8(data).ok();
     let mut action = MqttAction::None;
 
@@ -357,7 +369,12 @@ fn process_received_mqtt_message(topic: &str, data: &[u8], pump_set_topic: &str)
             } else {
                 let state = message == "OPEN";
                 info!("Pump command received on '{}'. State: {}", topic, state);
-                update_pump_state(state);
+
+                if state && !water_level_ok {
+                    warn!("Manual pump command blocked: drainage water level is full");
+                } else {
+                    update_pump_state(state);
+                }
 
                 if state {
                     info!("Scheduling clear of retained message on topic: {}", topic);
