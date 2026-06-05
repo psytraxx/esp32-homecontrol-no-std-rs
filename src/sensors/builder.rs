@@ -168,7 +168,11 @@ fn build_sensor_data(
         // Trigger pump automatically when soil is dry; water-level interlock is enforced
         // in update_task before the signal reaches the relay.
         let pump_needed = matches!(MoistureLevel::from(avg_soil_moisture), MoistureLevel::Dry);
-        if sensor_data.actuators.push(Actuator::Pump(pump_needed)).is_err() {
+        if sensor_data
+            .actuators
+            .push(Actuator::Pump(pump_needed))
+            .is_err()
+        {
             error!("Failed to push Pump actuator");
         }
     } else {
