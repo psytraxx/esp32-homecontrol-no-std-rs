@@ -4,7 +4,7 @@ use heapless::Vec;
 use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
-const WATER_LEVEL_THRESHOLD: u16 = 3000;
+const OVERFLOW_THRESHOLD: u16 = 2800;
 //soil is wet
 const MOISTURE_MIN: u16 = 800;
 // soil is dry
@@ -62,41 +62,14 @@ impl From<u16> for MoistureLevel {
     }
 }
 
-/// Indicates if water is present at the base of the pot (drainage area).
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub enum WaterLevel {
-    Full, // Water detected at the pot base
-    #[default]
-    Empty, // No water detected at the pot base
-}
-
-impl Display for WaterLevel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Self::Full => write!(f, "Full"),
-            Self::Empty => write!(f, "Empty"),
-        }
-    }
-}
-
-impl From<u16> for WaterLevel {
-    fn from(value: u16) -> Self {
-        if value < WATER_LEVEL_THRESHOLD {
-            Self::Empty
-        } else {
-            Self::Full
-        }
-    }
-}
-
 /// Represents all supported sensor types and their current readings.
 #[derive(Debug, EnumIter)]
 pub enum Sensor {
-    WaterLevel(WaterLevel),                // Water at pot base
-    AirTemperature(i8),                    // Air temperature in °C
-    AirHumidity(u8),                       // Air humidity in %
-    SoilMoisture(MoistureLevel),           // Soil moisture (qualitative)
-    BatteryVoltage(u16),                   // Battery voltage in mV
+    OverflowDetected(bool),      // true = water at pot base, pump blocked
+    AirTemperature(i8),          // Air temperature in °C
+    AirHumidity(u8),             // Air humidity in %
+    SoilMoisture(MoistureLevel), // Soil moisture (qualitative)
+    BatteryVoltage(u16),         // Battery voltage in mV
     SoilMoistureRaw(SoilMoistureRawLevel), // Raw soil moisture sensor value
 }
 
@@ -145,7 +118,7 @@ impl Sensor {
             Sensor::AirTemperature(_) => "temperature",
             Sensor::AirHumidity(_) => "humidity",
             Sensor::SoilMoisture(_) => "moisture",
-            Sensor::WaterLevel(_) => "waterlevel",
+            Sensor::OverflowDetected(_) => "overflow",
             Sensor::BatteryVoltage(_) => "batteryvoltage",
             Sensor::SoilMoistureRaw(_) => "moistureraw",
         }
@@ -157,19 +130,19 @@ impl Sensor {
             Sensor::AirTemperature(_) => "Room temperature",
             Sensor::AirHumidity(_) => "Room humidity",
             Sensor::SoilMoisture(_) => "Soil moisture",
-            Sensor::WaterLevel(_) => "Drainage water level",
+            Sensor::OverflowDetected(_) => "Overflow detected",
             Sensor::BatteryVoltage(_) => "Battery voltage",
             Sensor::SoilMoistureRaw(_) => "Soil moisture (mV)",
         }
     }
 
-    /// Get the value of the sensor as a JSON value
+    /// Get the value of the sensor as a string
     pub fn value(&self) -> String {
         match self {
             Sensor::AirTemperature(v) => v.to_string(),
             Sensor::AirHumidity(v) => v.to_string(),
             Sensor::SoilMoisture(v) => v.to_string(),
-            Sensor::WaterLevel(v) => v.to_string(),
+            Sensor::OverflowDetected(v) => if *v { "YES" } else { "NO" }.to_string(),
             Sensor::BatteryVoltage(v) => v.to_string(),
             Sensor::SoilMoistureRaw(v) => v.to_string(),
         }
@@ -181,6 +154,10 @@ impl Display for Sensor {
         let unit = self.unit().unwrap_or_default();
         write!(f, "{}: {}{}", self.name(), self.value(), unit)
     }
+}
+
+pub fn overflow_detected(adc_mv: u16) -> bool {
+    adc_mv > OVERFLOW_THRESHOLD // ~2217 mV dry, ~3475 mV submerged
 }
 
 fn clamp_soil_moisture(value: u16) -> u16 {

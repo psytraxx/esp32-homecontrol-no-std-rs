@@ -157,7 +157,7 @@ graph TD
 | `{DEVICE_ID}/humidity` | `{"value": "55"}` | Air humidity (%) |
 | `{DEVICE_ID}/moisture` | `{"value": "Dry"}` | Soil moisture level |
 | `{DEVICE_ID}/moistureraw` | `{"value": "1850"}` | Raw soil moisture (mV) |
-| `{DEVICE_ID}/waterlevel` | `{"value": "Empty"}` | Drainage water level |
+| `{DEVICE_ID}/overflow` | `{"value": "YES"}` / `{"value": "NO"}` | Drainage overflow sensor |
 | `{DEVICE_ID}/batteryvoltage` | `{"value": "3820"}` | Battery voltage (mV) |
 | `{DEVICE_ID}/pump/state` | `idle` / `running` / `blocked` | Pump activity state |
 
@@ -171,7 +171,7 @@ graph TD
 
 The pump is controlled exclusively via Home Assistant. Pressing the **Water pump** button in HA sends `PRESS` to `pump/set`. The device:
 
-1. Checks the drainage water-level sensor — if overflow is detected, responds with state `blocked` and does nothing.
+1. Checks the overflow sensor — if water is detected at the pot base (raw ADC > 2800 counts; measured ~2217 dry, ~3475 submerged), responds with state `blocked` and does nothing.
 2. Otherwise runs the pump for **10 seconds**, publishing `running` on start and `idle` on completion.
 
 There is no auto-trigger from soil moisture. The pump cannot be re-triggered while a run is already in progress (Embassy `Signal` drops repeated signals until consumed).

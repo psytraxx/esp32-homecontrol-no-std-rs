@@ -36,7 +36,7 @@ use crate::{
         HOMEASSISTANT_SENSOR_TOPIC, MQTT_PUBLISH_ENABLED,
     },
     display::{self, Display, DisplayTrait},
-    domain::{Sensor, SensorData, WaterLevel},
+    domain::{Sensor, SensorData},
 };
 
 const BUFFER_SIZE: usize = 4096;
@@ -98,7 +98,7 @@ pub async fn update_task(
         info!("Subscribed to pump command topic: {}", pump_set_topic);
 
         // Inner loop for processing events while connected
-        let mut water_level_ok = true; // updated on each sensor reading; safe default is allow
+        let mut pump_allowed = true; // updated on each sensor reading; safe default is allow
         loop {
             match select4(
                 sensordata_receiver.receive(),
@@ -109,10 +109,10 @@ pub async fn update_task(
             .await
             {
                 Either4::First(sensor_data) => {
-                    water_level_ok = sensor_data
+                    pump_allowed = !sensor_data
                         .data
                         .iter()
-                        .any(|e| matches!(e, Sensor::WaterLevel(WaterLevel::Empty)));
+                        .any(|e| matches!(e, Sensor::OverflowDetected(true)));
 
                     if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await
                     {
@@ -127,7 +127,7 @@ pub async fn update_task(
                             e.topic.as_ref().as_str(),
                             e.message.as_ref(),
                             &pump_set_topic,
-                            water_level_ok,
+                            pump_allowed,
                         )
                         .await
                         {
@@ -290,7 +290,7 @@ async fn process_pump_command(
     topic: &str,
     data: &[u8],
     pump_set_topic: &str,
-    water_level_ok: bool,
+    pump_allowed: bool,
 ) -> Result<(), Error> {
     if topic != pump_set_topic {
         warn!("Message on unhandled topic: {}", topic);
@@ -304,11 +304,11 @@ async fn process_pump_command(
         warn!("Unexpected payload on '{}': {}", topic, message);
         return Ok(());
     }
-    if !water_level_ok {
-        warn!("Pump command blocked: drainage water level is full");
-        publish_pump_state(client, "blocked").await?;
-    } else {
+    if pump_allowed {
         ENABLE_PUMP.signal(());
+    } else {
+        warn!("Pump command blocked: overflow detected");
+        publish_pump_state(client, "blocked").await?;
     }
     Ok(())
 }
@@ -361,11 +361,6 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     let device_class = s.device_class();
     if let Some(device_class) = device_class {
         payload["device_class"] = json!(device_class);
-    }
-
-    if let Sensor::WaterLevel(_) = s {
-        payload["payload_on"] = json!(WaterLevel::Full);
-        payload["payload_off"] = json!(WaterLevel::Empty);
     }
 
     let unit = s.unit();

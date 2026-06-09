@@ -81,7 +81,7 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 | [wifi.rs](src/wifi.rs) | WiFi connection, graceful shutdown |
 | [sleep.rs](src/sleep.rs) | Deep sleep with RTC memory, dual wake sources |
 | [display.rs](src/display.rs) | ST7789 LCD with embedded-graphics, powersave control |
-| [domain.rs](src/domain.rs) | Sensor types (`MoistureLevel`, `WaterLevel`), thresholds |
+| [domain.rs](src/domain.rs) | Sensor types (`MoistureLevel`, `OverflowDetected(bool)`), thresholds, `overflow_detected()` |
 | [config.rs](src/config.rs) | Timing and sampling constants |
 
 ### Data Flow
@@ -90,7 +90,7 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 sensors/mod.rs → SensorData → Channel → update_task → MQTT publish + display
 
 HA button press → MQTT pump/set (PRESS) → update_task
-  → water level ok? → ENABLE_PUMP.signal(())
+  → overflow? no  → ENABLE_PUMP.signal(())
                          ↓
                      relay_task → pump GPIO (10 s)
                          ↓
@@ -98,7 +98,7 @@ HA button press → MQTT pump/set (PRESS) → update_task
                          ↓
                      update_task → MQTT pump/state (running/idle)
 
-  → water level full? → MQTT pump/state (blocked)
+  → overflow? yes → MQTT pump/state (blocked)
 ```
 
 ### MQTT Integration
@@ -110,6 +110,7 @@ HA button press → MQTT pump/set (PRESS) → update_task
 
 **State topics:**
 - `{DEVICE_ID}/{sensor}` — sensor readings (`{"value": "..."}`)
+- `{DEVICE_ID}/overflow` — `{"value": "YES"}` (water detected) or `{"value": "NO"}` (dry); raw ADC threshold 2800 (~2217 dry, ~3475 submerged)
 - `{DEVICE_ID}/pump/state` — pump state: `idle` / `running` / `blocked`
 
 **Command topics:**
