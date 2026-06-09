@@ -32,7 +32,11 @@ pub(super) async fn collect_all_sensor_data(hw: &mut SensorHardware<'static>) ->
                 let temp = m.temperature.celsius();
                 let hum = m.relative_humidity;
                 info!("AHT20 — temp: {:.1}°C  humidity: {:.1}%", temp, hum);
-                push(&mut sensor_data, Sensor::AirTemperature(temp), "AirTemperature");
+                push(
+                    &mut sensor_data,
+                    Sensor::AirTemperature(temp),
+                    "AirTemperature",
+                );
                 push(&mut sensor_data, Sensor::AirHumidity(hum), "AirHumidity");
             }
             Err(e) => error!("AHT20 read failed: {:?}", e),
@@ -58,7 +62,11 @@ pub(super) async fn collect_all_sensor_data(hw: &mut SensorHardware<'static>) ->
                 "STEMMA — moisture: {} ({})  soil temp: {:.1}°C",
                 moisture, moisture_level, soil_temp
             );
-            push(&mut sensor_data, Sensor::SoilMoisture(moisture), "SoilMoisture");
+            push(
+                &mut sensor_data,
+                Sensor::SoilMoisture(moisture),
+                "SoilMoisture",
+            );
             push(
                 &mut sensor_data,
                 Sensor::SoilMoistureLevel(moisture_level),
@@ -85,9 +93,21 @@ pub(super) async fn collect_all_sensor_data(hw: &mut SensorHardware<'static>) ->
                     "INA219 — bus: {} mV  shunt: {} µV  I: {:.1} mA  P: {:.1} mW",
                     voltage_mv, shunt_uv, current_ma, power_mw
                 );
-                push(&mut sensor_data, Sensor::BatteryVoltage(voltage_mv), "BatteryVoltage");
-                push(&mut sensor_data, Sensor::BatteryCurrent(current_ma), "BatteryCurrent");
-                push(&mut sensor_data, Sensor::BatteryPower(power_mw), "BatteryPower");
+                push(
+                    &mut sensor_data,
+                    Sensor::BatteryVoltage(voltage_mv),
+                    "BatteryVoltage",
+                );
+                push(
+                    &mut sensor_data,
+                    Sensor::BatteryCurrent(current_ma),
+                    "BatteryCurrent",
+                );
+                push(
+                    &mut sensor_data,
+                    Sensor::BatteryPower(power_mw),
+                    "BatteryPower",
+                );
             }
             Ok(None) => warn!("INA219: conversion not ready"),
             Err(e) => error!("INA219 read failed: {:?}", e),
@@ -120,7 +140,11 @@ pub(super) async fn collect_all_sensor_data(hw: &mut SensorHardware<'static>) ->
             info!(
                 "Overflow raw ADC: {}mV → {}",
                 avg,
-                if detected { "Water in overflow" } else { "No water in overflow" }
+                if detected {
+                    "Water in overflow"
+                } else {
+                    "No water in overflow"
+                }
             );
             push(
                 &mut sensor_data,
