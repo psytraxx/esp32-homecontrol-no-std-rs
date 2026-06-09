@@ -8,33 +8,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Changed
-- Pump trigger logic replaced: pump now activates automatically when soil moisture reads `Dry` (instead of every Nth boot). Manual control via MQTT `pump/set OPEN` still works. Both paths are blocked when the drainage water-level sensor reports `Full`.
-- Water-level interlock now also covers the manual MQTT path (`process_received_mqtt_message` receives `water_level_ok` and drops `OPEN` commands when overflow is detected).
-
-### Removed
-- `PUMP_TRIGGER_INTERVAL` constant and boot-count modulo scheduling removed from `config.rs` and `sensors/builder.rs`
+- Pump is now exclusively controlled via Home Assistant; local soil-moisture auto-triggering removed entirely.
+- HA pump integration changed from a valve entity to a **button + sensor** pair: pressing the button sends `PRESS` to `{DEVICE_ID}/pump/set`; pump state (`idle` / `running` / `blocked`) is published to `{DEVICE_ID}/pump/state` and shown via a sensor entity. No retained messages, no toggle reset needed.
+- When HA presses the button, the relay runs the pump for exactly 10 s then stops automatically.
+- Pump start is blocked (state → `blocked`) if the drainage water-level sensor reports overflow at command time.
+- `ENABLE_PUMP` signal changed from `Signal<bool>` to `Signal<()>` — fire-and-forget trigger; overflow check lives entirely in `update_task`.
+- `PUMP_STATE: Signal<bool>` added — `relay_task` signals `true` on start and `false` on stop; `update_task` publishes `running` / `idle` accordingly.
+- `DisplayTrait::set_powersave(bool)` replaces the old separate `enable_powersave` / `disable_powersave` methods. Called with `true` before deep sleep (via `DISPLAY_SLEEP`), and `false` lazily on first `write_multiline` call.
+- Display on button/boot wake: backlight and pixels enabled on first write. Display on timer wake: initialised in sleep state, never turned on.
+- `SensorData.publish` flag removed — sensor data is always published.
+- Power: CPU clock reduced from 240 MHz to 80 MHz — sufficient for I/O-bound workload, cuts CPU dynamic power ~3×.
+- Power: DHT11 is now read once per wake cycle (one 2 s warmup) instead of once per sample (5 × 2 s = 10 s). Saves ~8 s of active time per wake.
+- `enter_deep` in `sleep.rs`: log + 100 ms flush delay moved to caller in `main.rs` so USB CDC output is transmitted before sleep.
 
 ### Added
-- `HARDWARE_V2.md` — sensor upgrade plan with confirmed BOM: AHT20+BMP280 combo, Adafruit STEMMA soil sensor, INA219 power monitor; all I2C, STEMMA QT connectors; Rust crate analysis, wiring diagram, firmware checklist
-- Mermaid wiring diagrams for V1 (current) and V2 (planned) hardware added to `README.md`
-- `Actuator` enum in `domain.rs` — mirrors the `Sensor` enum pattern; currently holds `Pump(bool)`; adding a new actuator (e.g. humidifier) is just a new variant + bump of `Vec` capacity
-- `src/sensors/` module replacing `sensors_task.rs`: `hardware.rs` (peripheral init), `adc.rs` (generic ADC sampling, unified `read_powered_adc_sensor` eliminates moisture/water-level duplication), `builder.rs` (data assembly), `mod.rs` (thin Embassy task entry)
-- Sensor sampling constants (`PUMP_TRIGGER_INTERVAL`, `USB_CHARGING_VOLTAGE_MV`, `DHT11_WARMUP_DELAY_MS`, `SENSOR_WARMUP_DELAY_MS`, `SENSOR_SAMPLE_COUNT`) moved to `config.rs`
+- `DISPLAY_SLEEP` — fired by `main` before deep sleep so `update_task` can call `set_powersave(true)` on the display it owns.
+- `HARDWARE_V2.md` — sensor upgrade plan with confirmed BOM: AHT20+BMP280 combo, Adafruit STEMMA soil sensor, INA219 power monitor; all I2C, STEMMA QT connectors; Rust crate analysis, wiring diagram, firmware checklist.
+- Mermaid wiring diagrams for V1 (current) and V2 (planned) hardware added to `README.md`.
+- `src/sensors/` module replacing `sensors_task.rs`: `hardware.rs` (peripheral init), `adc.rs` (unified `read_powered_adc_sensor`), `builder.rs` (data assembly), `mod.rs` (Embassy task entry).
+- Sensor sampling constants (`USB_CHARGING_VOLTAGE_MV`, `DHT11_WARMUP_DELAY_MS`, `SENSOR_WARMUP_DELAY_MS`, `SENSOR_SAMPLE_COUNT`) moved to `config.rs`.
+- MQTT discovery payload includes `force_update: true` for numeric sensors — prevents HA recorder from deduplicating unchanged values.
 
-### Changed
-- Power: CPU clock reduced from 240 MHz to 80 MHz — sufficient for I/O-bound workload, cuts CPU dynamic power ~3×
-- Power: display is initialised in sleep state on timer wakes (nobody present); only button wakes (Ext0) turn on the backlight and draw sensor data — saves ~20–30 mA for the entire awake window on unattended cycles
-- Power: DHT11 is now read once per wake cycle (one 2 s warmup) instead of once per sample (5 × 2 s = 10 s warmup). The single reading is replicated across all sample slots so the averaging logic is unchanged. Saves ~8 s of active time per wake.
-- `update_task.rs`: fixed MQTT event loop starvation — the inner select now uses `select3` to race sensor data, MQTT poll, and `STOP_UPDATE_TASK_SIGNAL` simultaneously; when the stop signal fires the display `enable_powersave()` is called immediately before the task exits, preserving power-save behaviour without blocking MQTT for 30 s
-- `update_task.rs` / `main.rs`: introduced `DISPLAY_POWERSAVE_SIGNAL` (separate from `STOP_WIFI_SIGNAL`) — Embassy `Signal` stores only one waker, so sharing a single signal between two tasks meant only one task was reliably notified; each task now has its own signal fired together from `main`
-- `enter_deep` in `sleep.rs`: removed log statement that fired immediately before `rtc.sleep()` (USB CDC has no chance to flush it); caller in `main.rs` now logs + awaits 100 ms before entering sleep so all pending output is transmitted
-
-### Documentation
-- `README.md`: added explicit note that MQTT publishing is intentionally suppressed when battery voltage exceeds `USB_CHARGING_VOLTAGE_MV` (board powered via USB); this is a design decision, not a bug
-- MQTT discovery payload now includes `force_update: true` for numeric sensors — prevents Home Assistant recorder from deduplicating unchanged values, giving full hourly history resolution
-- Updated `CLAUDE.md` — added changelog and code quality workflow requirements
-- `PumpTrigger(bool)` removed from the `Sensor` enum — it was incorrectly appearing as a Home Assistant sensor entity; pump state now lives in `SensorData.actuators: Vec<Actuator, 1>`
-- `update_task.rs` reads pump state from `sensor_data.actuators` instead of iterating `sensor_data.data` for `Sensor::PumpTrigger`
+### Removed
+- `Actuator` enum and `SensorData.actuators` field — pump is no longer triggered from sensor readings.
+- `SensorData.publish` field — sensor data is always published.
+- `PUMP_TRIGGER_INTERVAL` constant and boot-count modulo scheduling.
+- Valve MQTT entity replaced by button + sensor (see above).
 
 ---
 

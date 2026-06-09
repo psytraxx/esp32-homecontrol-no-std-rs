@@ -5,7 +5,7 @@ use log::{error, info};
 
 use crate::{
     config::{DHT11_WARMUP_DELAY_MS, SENSOR_SAMPLE_COUNT},
-    domain::{Actuator, MoistureLevel, Sensor, SensorData, WaterLevel},
+    domain::{MoistureLevel, Sensor, SensorData, WaterLevel},
 };
 
 use super::adc::{calculate_average, read_battery_voltage, read_powered_adc_sensor};
@@ -164,17 +164,6 @@ fn build_sensor_data(
         {
             error!("Failed to push SoilMoisture to sensor_data");
         }
-
-        // Trigger pump automatically when soil is dry; water-level interlock is enforced
-        // in update_task before the signal reaches the relay.
-        let pump_needed = matches!(MoistureLevel::from(avg_soil_moisture), MoistureLevel::Dry);
-        if sensor_data
-            .actuators
-            .push(Actuator::Pump(pump_needed))
-            .is_err()
-        {
-            error!("Failed to push Pump actuator");
-        }
     } else {
         error!("Unable to generate average value of soil moisture");
     }
@@ -190,9 +179,6 @@ fn build_sensor_data(
             error!("Failed to push BatteryVoltage to sensor_data");
         }
     }
-
-    // Only publish sensor data if we received battery readings (proxy for healthy reads)
-    sensor_data.publish = !battery_voltage_samples.is_empty();
 
     sensor_data
 }

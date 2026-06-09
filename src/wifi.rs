@@ -14,7 +14,7 @@ use static_cell::StaticCell;
 static STACK_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
 
 /// Signal to request to stop WiFi
-pub static STOP_WIFI_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+pub static WIFI_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 pub async fn connect_to_wifi(
     wifi: peripherals::WIFI<'static>,
@@ -99,7 +99,7 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
             Ok(_) => {
                 info!("Connected to WiFi network");
                 info!("Wait for request to stop wifi");
-                STOP_WIFI_SIGNAL.wait().await;
+                WIFI_SIGNAL.wait().await;
                 info!("Received signal to stop wifi");
                 controller.disconnect_async().await.ok();
                 break;

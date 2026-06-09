@@ -4,9 +4,12 @@ pub const DISPLAY_WIDTH: u16 = 320;
 pub const DISPLAY_HEIGHT: u16 = 170;
 pub const HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX: &str = "homeassistant";
 pub const HOMEASSISTANT_SENSOR_TOPIC: &str = "sensor";
-pub const HOMEASSISTANT_VALVE_TOPIC: &str = "valve";
+pub const HOMEASSISTANT_BUTTON_TOPIC: &str = "button";
 // ESP will go to deep sleep and not report any data for this duration
 pub const DEEP_SLEEP_DURATION_SECONDS: u64 = 3600 - AWAKE_DURATION_SECONDS;
+
+/// Set to false to suppress all MQTT publishing (useful during development on USB power).
+pub const MQTT_PUBLISH_ENABLED: bool = true;
 
 // Sensor sampling configuration
 /// Battery voltage above this threshold (mV) indicates USB charging — skip reading

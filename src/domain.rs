@@ -14,18 +14,10 @@ const MOISTURE_WET_THRESHOLD: f32 = 0.8;
 // less than 15% is dry
 const MOISTURE_DRY_THRESHOLD: f32 = 0.15;
 
-/// Actuator commands — mirrors the Sensor enum pattern; add new variants as needed.
-#[derive(Debug)]
-pub enum Actuator {
-    Pump(bool),
-}
-
 /// Struct to hold sensor data
 #[derive(Default, Debug)]
 pub struct SensorData {
     pub data: Vec<Sensor, 6>,
-    pub actuators: Vec<Actuator, 1>,
-    pub publish: bool,
 }
 
 impl Display for SensorData {

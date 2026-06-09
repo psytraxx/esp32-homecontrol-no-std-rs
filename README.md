@@ -138,25 +138,43 @@ graph TD
 - **Network Connectivity**
 
   - WiFi connection with DHCP
-  - MQTT integration with Home Assistant
-  - Auto-discovery of sensors
-  - Remote pump control
+  - MQTT integration with Home Assistant auto-discovery
+  - Sensor state published each wake cycle
+  - Pump controlled via HA button entity; state (`idle` / `running` / `blocked`) reported back
 
 - **Power Management**
   - Deep sleep support
   - Configurable wake/sleep cycles
   - Battery-optimized operation
 
-> **ℹ️ USB / development mode — sensor data is intentionally not published**
->
-> Battery voltage is read via a ×2 ADC voltage divider on GPIO4. When the
-> measured voltage exceeds `USB_CHARGING_VOLTAGE_MV` (≈ 4 500 mV) the reading
-> is discarded and `sensor_data.publish` is set to `false`, suppressing all
-> MQTT publishes for that wake cycle. This is a deliberate design decision:
-> a reading in that range means the board is powered from USB (laptop / charger)
-> rather than from the LiPo battery, so the values would be meaningless in the
-> field. **This is not a bug.** To publish during development, power the board
-> from the LiPo battery instead of USB.
+## MQTT Integration
+
+### Published topics
+
+| Topic | Values | Description |
+|-------|--------|-------------|
+| `{DEVICE_ID}/temperature` | `{"value": "22"}` | Air temperature (°C) |
+| `{DEVICE_ID}/humidity` | `{"value": "55"}` | Air humidity (%) |
+| `{DEVICE_ID}/moisture` | `{"value": "Dry"}` | Soil moisture level |
+| `{DEVICE_ID}/moistureraw` | `{"value": "1850"}` | Raw soil moisture (mV) |
+| `{DEVICE_ID}/waterlevel` | `{"value": "Empty"}` | Drainage water level |
+| `{DEVICE_ID}/batteryvoltage` | `{"value": "3820"}` | Battery voltage (mV) |
+| `{DEVICE_ID}/pump/state` | `idle` / `running` / `blocked` | Pump activity state |
+
+### Subscribed topics
+
+| Topic | Payload | Description |
+|-------|---------|-------------|
+| `{DEVICE_ID}/pump/set` | `PRESS` | Trigger a 10 s pump run |
+
+### Pump control
+
+The pump is controlled exclusively via Home Assistant. Pressing the **Water pump** button in HA sends `PRESS` to `pump/set`. The device:
+
+1. Checks the drainage water-level sensor — if overflow is detected, responds with state `blocked` and does nothing.
+2. Otherwise runs the pump for **10 seconds**, publishing `running` on start and `idle` on completion.
+
+There is no auto-trigger from soil moisture. The pump cannot be re-triggered while a run is already in progress (Embassy `Signal` drops repeated signals until consumed).
 
 ---
 
