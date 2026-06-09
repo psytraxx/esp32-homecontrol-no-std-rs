@@ -350,14 +350,14 @@ loop {
 
 ### Graceful WiFi Shutdown
 ```rust
-pub static STOP_WIFI_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+pub static WIFI_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 // In connection task
-STOP_WIFI_SIGNAL.wait().await;
+WIFI_SIGNAL.wait().await;
 controller.stop_async().await?;
 
 // Before deep sleep
-STOP_WIFI_SIGNAL.signal(());
+WIFI_SIGNAL.signal(());
 ```
 
 ## Sensor Patterns

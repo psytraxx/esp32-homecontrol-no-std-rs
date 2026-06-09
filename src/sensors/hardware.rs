@@ -10,7 +10,7 @@ pub(super) struct SensorHardware<'a> {
     pub(super) adc1: Adc<'a, ADC1<'a>, Blocking>,
     pub(super) adc2: Adc<'a, ADC2<'a>, Blocking>,
     pub(super) moisture_pin: AdcPin<GPIO11<'a>, ADC2<'a>, AdcCalCurve<ADC2<'a>>>,
-    pub(super) waterlevel_pin: AdcPin<GPIO12<'a>, ADC2<'a>, AdcCalCurve<ADC2<'a>>>,
+    pub(super) waterlevel_pin: AdcPin<GPIO12<'a>, ADC2<'a>, ()>,
     pub(super) battery_pin: AdcPin<GPIO4<'a>, ADC1<'a>, AdcCalLine<ADC1<'a>>>,
     pub(super) moisture_power_pin: Output<'a>,
     pub(super) water_level_power_pin: Output<'a>,
@@ -34,8 +34,7 @@ pub(super) async fn initialize_hardware(p: SensorPeripherals) -> SensorHardware<
     let mut adc2_config = AdcConfig::new();
     let moisture_pin = adc2_config
         .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.moisture_analog_pin, Attenuation::_11dB);
-    let waterlevel_pin = adc2_config
-        .enable_pin_with_cal::<_, AdcCalCurve<ADC2>>(p.water_level_analog_pin, Attenuation::_11dB);
+    let waterlevel_pin = adc2_config.enable_pin(p.water_level_analog_pin, Attenuation::_11dB);
     let adc2 = Adc::new(p.adc2, adc2_config);
 
     let mut adc1_config = AdcConfig::new();

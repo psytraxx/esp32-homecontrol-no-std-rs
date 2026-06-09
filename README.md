@@ -138,25 +138,47 @@ graph TD
 - **Network Connectivity**
 
   - WiFi connection with DHCP
-  - MQTT integration with Home Assistant
-  - Auto-discovery of sensors
-  - Remote pump control
+  - MQTT integration with Home Assistant auto-discovery
+  - Sensor state published each wake cycle
+  - Pump controlled via HA switch entity; retained `ON` survives deep sleep and executes on next wake
 
 - **Power Management**
   - Deep sleep support
   - Configurable wake/sleep cycles
   - Battery-optimized operation
 
-> **ℹ️ USB / development mode — sensor data is intentionally not published**
->
-> Battery voltage is read via a ×2 ADC voltage divider on GPIO4. When the
-> measured voltage exceeds `USB_CHARGING_VOLTAGE_MV` (≈ 4 500 mV) the reading
-> is discarded and `sensor_data.publish` is set to `false`, suppressing all
-> MQTT publishes for that wake cycle. This is a deliberate design decision:
-> a reading in that range means the board is powered from USB (laptop / charger)
-> rather than from the LiPo battery, so the values would be meaningless in the
-> field. **This is not a bug.** To publish during development, power the board
-> from the LiPo battery instead of USB.
+## MQTT Integration
+
+### Published topics
+
+| Topic | Values | Description |
+|-------|--------|-------------|
+| `{DEVICE_ID}/temperature` | `{"value": "22"}` | Air temperature (°C) |
+| `{DEVICE_ID}/humidity` | `{"value": "55"}` | Air humidity (%) |
+| `{DEVICE_ID}/moisture` | `{"value": "Dry"}` | Soil moisture level |
+| `{DEVICE_ID}/moistureraw` | `{"value": "1850"}` | Raw soil moisture (mV) |
+| `{DEVICE_ID}/overflow` | `{"value": "YES"}` / `{"value": "NO"}` | Drainage overflow sensor |
+| `{DEVICE_ID}/batteryvoltage` | `{"value": "3820"}` | Battery voltage (mV) |
+
+### Subscribed topics
+
+| Topic | Payload | Description |
+|-------|---------|-------------|
+| `{DEVICE_ID}/pump/set` | `ON` / `OFF` | Schedule pump run (retained); device resets to `OFF` after acting |
+
+### Pump control
+
+The pump is controlled exclusively via Home Assistant using a **switch entity**. The switch state is retained by the MQTT broker, so it survives the device's deep sleep (~59.5 min per cycle).
+
+**Flow:**
+1. Flip the **Water pump** switch to `ON` in HA from anywhere — broker stores it as retained.
+2. On the next wake cycle, the device reads all sensors first (establishing overflow state).
+3. Device then subscribes to the pump topic — retained `ON` is delivered with overflow state already known.
+4. Device resets the switch to `OFF` (retained) so a second wake doesn't re-trigger.
+5. If overflow detected (raw ADC > 2800; measured ~2217 mV dry, ~3475 mV submerged) — blocked, pump does not run.
+6. Otherwise runs the pump for **10 seconds**.
+
+There is no auto-trigger from soil moisture. The pump cannot be re-triggered while a run is already in progress (Embassy `Signal` drops repeated signals until consumed).
 
 ---
 

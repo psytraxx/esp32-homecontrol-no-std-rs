@@ -34,18 +34,20 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 - `MQTT_HOSTNAME`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_PORT` - MQTT broker config
 
 ### Task Architecture
-- **sensor_task**: Reads sensors every 5s → sends via channel
-- **update_task**: MQTT publishing, display updates, Home Assistant discovery
-- **relay_task**: Water pump control via signal
-- **connection/net_task**: WiFi management, graceful shutdown
+- **sensor_task**: Reads all sensors once per wake cycle → sends via channel to update_task
+- **update_task**: MQTT publishing, display updates, HA discovery, pump state reporting
+- **relay_task**: Runs pump for 10 s on `ENABLE_PUMP` signal
+- **connect_to_wifi / net_task**: WiFi management, graceful shutdown via `STOP_WIFI_SIGNAL`
 
 ### Sleep Cycle
 1. Wake from deep sleep (button or timer)
 2. Connect WiFi
-3. Publish discovery (first boot only) 
-4. Read & publish sensors for 30s
-5. Disconnect WiFi gracefully
-6. Sleep ~1 hour
+3. Read sensors (Phase 1 — establishes overflow state)
+4. Subscribe to pump command topic (retained ON delivered with overflow state already known)
+5. Publish discovery (first boot only)
+6. Publish sensors; process pump command if pending
+7. Disconnect WiFi gracefully
+8. Sleep ~1 hour
 
 **RTC Fast Memory** (survives deep sleep):
 - `BOOT_COUNT` - increments each wake
@@ -71,33 +73,43 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 
 | File | Purpose |
 |------|---------|
-| [main.rs](src/main.rs) | Entry, peripheral setup, task spawning |
-| [sensors_task.rs](src/sensors_task.rs) | ADC reads, averaging, outlier removal |
-| [update_task.rs](src/update_task.rs) | MQTT client with reconnect loop, HA discovery |
-| [relay_task.rs](src/relay_task.rs) | Pump control with signal pattern |
+| [main.rs](src/main.rs) | Entry, peripheral setup, task spawning, global signals |
+| [sensors/mod.rs](src/sensors/mod.rs) | Embassy task entry for sensor sampling |
+| [sensors/builder.rs](src/sensors/builder.rs) | Assembles `SensorData` from raw samples |
+| [sensors/adc.rs](src/sensors/adc.rs) | Generic ADC sampling, averaging, outlier removal |
+| [sensors/hardware.rs](src/sensors/hardware.rs) | Peripheral init for all sensor hardware |
+| [update_task.rs](src/update_task.rs) | MQTT client, HA discovery, pump state publishing |
+| [relay_task.rs](src/relay_task.rs) | 10 s pump run on `ENABLE_PUMP` signal |
 | [wifi.rs](src/wifi.rs) | WiFi connection, graceful shutdown |
 | [sleep.rs](src/sleep.rs) | Deep sleep with RTC memory, dual wake sources |
-| [display.rs](src/display.rs) | ST7789 LCD with embedded-graphics |
-| [domain.rs](src/domain.rs) | Sensor types (MoistureLevel, WaterLevel), thresholds |
-| [dht11.rs](src/dht11.rs) | DHT11 bit-bang protocol |
-| [config.rs](src/config.rs) | Timing constants (awake/sleep duration) |
+| [display.rs](src/display.rs) | ST7789 LCD with embedded-graphics, powersave control |
+| [domain.rs](src/domain.rs) | Sensor types (`MoistureLevel`, `OverflowDetected(bool)`), thresholds, `overflow_detected()` |
+| [config.rs](src/config.rs) | Timing and sampling constants |
 
 ### Data Flow
 
 ```
-Sensors → ADC (sensors_task) → domain types → Channel → 
-update_task → MQTT publish + display update
-         ↓
-MQTT command → relay_task → pump GPIO
+sensor_task → SensorData → Channel → update_task (Phase 1)
+  → overflow_detected() → pump_allowed bool
+  → MQTT publish + display update
+  → subscribe to pump/set topic  ← retained ON delivered here
+
+update_task (Phase 2, inner loop):
+  MQTT pump/set ON → overflow? no  → reset switch OFF + ENABLE_PUMP.signal(())
+                                              ↓
+                                        relay_task → pump GPIO (10 s)
+
+                   → overflow? yes → reset switch OFF, log blocked
 ```
 
 ### MQTT Integration
 
-**Published topics:**
-- `homeassistant/sensor/{DEVICE_ID}/{sensor}/config` - Discovery
-- `homeassistant/sensor/{DEVICE_ID}/{sensor}/state` - Readings
+**Discovery topics (retained):**
+- `homeassistant/sensor/{DEVICE_ID}_{sensor}/config` — sensor entities
+- `homeassistant/switch/{DEVICE_ID}_pump/config` — pump switch (retained ON/OFF)
+**State topics:**
+- `{DEVICE_ID}/{sensor}` — sensor readings (`{"value": "..."}`)
+- `{DEVICE_ID}/overflow` — `{"value": "YES"}` (water detected) or `{"value": "NO"}` (dry); raw ADC threshold 2800 (~2217 dry, ~3475 submerged)
 
-**Subscribed topics:**
-- `homeassistant/switch/{DEVICE_ID}/pump/set` - Pump commands (ON/OFF)
-
-Auto-clears retained pump commands after activation.
+**Command topics:**
+- `{DEVICE_ID}/pump/set` — receives `ON` from HA switch (retained); device resets to `OFF` after acting

@@ -5,7 +5,7 @@ use log::{error, info};
 
 use crate::{
     config::{DHT11_WARMUP_DELAY_MS, SENSOR_SAMPLE_COUNT},
-    domain::{Actuator, MoistureLevel, Sensor, SensorData, WaterLevel},
+    domain::{MoistureLevel, Sensor, SensorData, overflow_detected},
 };
 
 use super::adc::{calculate_average, read_battery_voltage, read_powered_adc_sensor};
@@ -131,19 +131,27 @@ fn build_sensor_data(
         );
     }
 
-    // Process water level
+    // Process overflow sensor
     if let Some(avg_water_level) = calculate_average(&mut water_level_samples) {
-        let waterlevel: WaterLevel = avg_water_level.into();
-        info!("Pot base water level: {}", waterlevel);
+        let detected = overflow_detected(avg_water_level);
+        info!(
+            "Overflow raw ADC: {}mV → {}",
+            avg_water_level,
+            if detected {
+                "Water in overflow"
+            } else {
+                "No water in overflow"
+            }
+        );
         if sensor_data
             .data
-            .push(Sensor::WaterLevel(avg_water_level.into()))
+            .push(Sensor::OverflowDetected(detected))
             .is_err()
         {
-            error!("Failed to push WaterLevel to sensor_data");
+            error!("Failed to push OverflowDetected to sensor_data");
         }
     } else {
-        error!("Unable to generate average value of water level");
+        error!("Unable to generate average value of overflow sensor");
     }
 
     // Process soil moisture
@@ -164,17 +172,6 @@ fn build_sensor_data(
         {
             error!("Failed to push SoilMoisture to sensor_data");
         }
-
-        // Trigger pump automatically when soil is dry; water-level interlock is enforced
-        // in update_task before the signal reaches the relay.
-        let pump_needed = matches!(MoistureLevel::from(avg_soil_moisture), MoistureLevel::Dry);
-        if sensor_data
-            .actuators
-            .push(Actuator::Pump(pump_needed))
-            .is_err()
-        {
-            error!("Failed to push Pump actuator");
-        }
     } else {
         error!("Unable to generate average value of soil moisture");
     }
@@ -190,9 +187,6 @@ fn build_sensor_data(
             error!("Failed to push BatteryVoltage to sensor_data");
         }
     }
-
-    // Only publish sensor data if we received battery readings (proxy for healthy reads)
-    sensor_data.publish = !battery_voltage_samples.is_empty();
 
     sensor_data
 }

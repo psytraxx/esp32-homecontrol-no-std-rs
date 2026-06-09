@@ -185,13 +185,13 @@ graph TD
 ## Firmware Changes Required
 
 1. **Remove** `dht11.rs` entirely
-2. **Remove** ADC pin setup for GPIO4 (battery) and GPIO11 (moisture) in `sensors_task.rs`
-3. **Add** I2C bus init on GPIO3/GPIO10 at 400 kHz
+2. **Remove** ADC pin setup for GPIO4 (battery) and GPIO11 (moisture) from `sensors/hardware.rs` and `sensors/builder.rs`
+3. **Add** I2C bus init on GPIO3/GPIO10 at 400 kHz in `sensors/hardware.rs`
 4. **Add** AHT20 driver (`embedded-aht20` crate) → publish temp (f32), humidity (f32)
 5. **Add** BMP280 driver (`bme280-rs` crate) → publish pressure (f32, optional)
 6. **Add** STEMMA soil driver (`stemma-soil-sensor-embassy` crate) → publish moisture counts + soil temp; remap address to `0x37`
 7. **Add** INA219 driver (`ina219` crate v0.2.1, async feature) → publish voltage (mV), current (mA), power (mW); wire battery positive lead through INA219 shunt terminals
 8. **Update** `domain.rs` — `MoistureLevel` thresholds mapped to STEMMA 200–2000 range
-9. **Update** MQTT discovery payloads — new sensors: current (`mA`), power (`mW`); updated units for all
+9. **Update** MQTT discovery payloads in `update_task.rs` — new sensors: current (`mA`), power (`mW`); updated units for all
 10. **Keep** water level ADC path unchanged (GPIO12 + GPIO21)
-11. **Remove** address conflict concern — INA219 at `0x40` has no clash with any other sensor
+11. No I2C address conflicts — INA219 at `0x40` is clear of all other sensors

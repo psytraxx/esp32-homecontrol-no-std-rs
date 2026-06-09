@@ -38,8 +38,8 @@ use rtc_memory::RtcCell;
 use sensors::{SensorPeripherals, sensor_task};
 use sleep::enter_deep;
 use static_cell::StaticCell;
-use update_task::{DISPLAY_POWERSAVE_SIGNAL, update_task};
-use wifi::{STOP_WIFI_SIGNAL, connect_to_wifi};
+use update_task::update_task;
+use wifi::{WIFI_SIGNAL, connect_to_wifi};
 
 extern crate alloc;
 
@@ -55,7 +55,10 @@ mod wifi;
 
 /// A channel between sensor sampler and display updater
 static CHANNEL: StaticCell<Channel<NoopRawMutex, SensorData, 3>> = StaticCell::new();
-static ENABLE_PUMP: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+/// Fired by update_task to start a timed pump run (HA command only).
+static ENABLE_PUMP: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+/// Fired by main before deep sleep so update_task puts the display to sleep.
+static DISPLAY_SLEEP: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 /// Stored boot count between deep sleep cycles
 ///
@@ -144,11 +147,13 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     }
 
     info!("Create channel");
-    let channel: &'static mut _ = CHANNEL.init(Channel::new());
-    let receiver = channel.receiver();
-    let sender = channel.sender();
+    let sensordata_channel: &'static mut _ = CHANNEL.init(Channel::new());
+    let sensordata_receiver = sensordata_channel.receiver();
+    let sensordata_sender = sensordata_channel.sender();
 
-    spawner.spawn(update_task(stack, display, receiver).expect("Unable to start update task"));
+    spawner.spawn(
+        update_task(stack, display, sensordata_receiver).expect("Unable to start update task"),
+    );
 
     // see https://github.com/Xinyuan-LilyGO/T-Display-S3/blob/main/image/T-DISPLAY-S3.jpg
     let sensor_peripherals = SensorPeripherals {
@@ -162,17 +167,20 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
         adc2: peripherals.ADC2,
     };
 
-    spawner.spawn(sensor_task(sender, sensor_peripherals).expect("Unable to start sensor task"));
+    spawner.spawn(
+        sensor_task(sensordata_sender, sensor_peripherals).expect("Unable to start sensor task"),
+    );
 
-    spawner.spawn(relay_task(peripherals.GPIO2).expect("Unable to start relay task"));
+    spawner.spawn(relay_task(peripherals.GPIO2.degrade()).expect("Unable to start relay task"));
 
     let awake_duration = Duration::from_secs(AWAKE_DURATION_SECONDS);
 
     info!("Stay awake for {}s", awake_duration.as_secs());
     Timer::after(awake_duration).await;
     info!("Request to disconnect wifi");
-    STOP_WIFI_SIGNAL.signal(());
-    DISPLAY_POWERSAVE_SIGNAL.signal(());
+    WIFI_SIGNAL.signal(());
+    info!("Request to put display to sleep");
+    DISPLAY_SLEEP.signal(());
 
     // set power pin to low to save power
     power_pin.set_low();
