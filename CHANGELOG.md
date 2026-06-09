@@ -7,13 +7,15 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- Race condition: retained `ON` pump command was delivered on subscribe before sensor_task sent first reading, causing the pump to fire even when overflow was present. Fix: `update_task` now waits for the first sensor reading before subscribing to the pump topic, so overflow state is always known before any retained command is delivered. No flags needed.
+
 ### Changed
 - Pump is now exclusively controlled via Home Assistant; local soil-moisture auto-triggering removed entirely.
-- HA pump integration changed from a valve entity to a **button + sensor** pair: pressing the button sends `PRESS` to `{DEVICE_ID}/pump/set`; pump state (`idle` / `running` / `blocked`) is published to `{DEVICE_ID}/pump/state` and shown via a sensor entity. No retained messages, no toggle reset needed.
+- HA pump integration changed from a valve entity to a **switch**: the switch publishes retained `ON`/`OFF` to `{DEVICE_ID}/pump/set`; device resets switch to `OFF` after acting. Retained switch survives device deep sleep — command is never lost. Separate pump state sensor removed; switch state reflects everything.
 - When HA presses the button, the relay runs the pump for exactly 10 s then stops automatically.
 - Pump start is blocked (state → `blocked`) if the overflow sensor reports water at the pot base at command time.
 - `ENABLE_PUMP` signal changed from `Signal<bool>` to `Signal<()>` — fire-and-forget trigger; overflow check lives entirely in `update_task`.
-- `PUMP_STATE: Signal<bool>` added — `relay_task` signals `true` on start and `false` on stop; `update_task` publishes `running` / `idle` accordingly.
 - `DisplayTrait::set_powersave(bool)` replaces the old separate `enable_powersave` / `disable_powersave` methods. Called with `true` before deep sleep (via `DISPLAY_SLEEP`), and `false` lazily on first `write_multiline` call.
 - Display on button/boot wake: backlight and pixels enabled on first write. Display on timer wake: initialised in sleep state, never turned on.
 - `SensorData.publish` flag removed — sensor data is always published.
@@ -34,7 +36,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - `Actuator` enum and `SensorData.actuators` field — pump is no longer triggered from sensor readings.
 - `SensorData.publish` field — sensor data is always published.
 - `PUMP_TRIGGER_INTERVAL` constant and boot-count modulo scheduling.
-- Valve MQTT entity replaced by button + sensor (see above).
+- Valve MQTT entity replaced by switch + sensor (see above). **Delete old retained discovery topics `homeassistant/valve/...` and `homeassistant/button/...` from broker after flashing.**
 - `WaterLevel` enum replaced by `Sensor::OverflowDetected(bool)` — simpler, no intermediate type. MQTT topic changed from `waterlevel` to `overflow`; published value is `"YES"` (water detected) or `"NO"` (dry). Water level pin now reads without ADC calibration (`()` cal scheme) matching observed raw counts. **Delete the old retained discovery topic `homeassistant/sensor/{DEVICE_ID}_waterlevel/config` from the broker after flashing.**
 
 ---

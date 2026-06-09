@@ -36,16 +36,18 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 ### Task Architecture
 - **sensor_task**: Reads all sensors once per wake cycle → sends via channel to update_task
 - **update_task**: MQTT publishing, display updates, HA discovery, pump state reporting
-- **relay_task**: Runs pump for 10 s on `ENABLE_PUMP` signal, reports state via `PUMP_STATE`
+- **relay_task**: Runs pump for 10 s on `ENABLE_PUMP` signal
 - **connect_to_wifi / net_task**: WiFi management, graceful shutdown via `STOP_WIFI_SIGNAL`
 
 ### Sleep Cycle
 1. Wake from deep sleep (button or timer)
 2. Connect WiFi
-3. Publish discovery (first boot only) 
-4. Read & publish sensors for 30s
-5. Disconnect WiFi gracefully
-6. Sleep ~1 hour
+3. Read sensors (Phase 1 — establishes overflow state)
+4. Subscribe to pump command topic (retained ON delivered with overflow state already known)
+5. Publish discovery (first boot only)
+6. Publish sensors; process pump command if pending
+7. Disconnect WiFi gracefully
+8. Sleep ~1 hour
 
 **RTC Fast Memory** (survives deep sleep):
 - `BOOT_COUNT` - increments each wake
@@ -87,31 +89,27 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 ### Data Flow
 
 ```
-sensors/mod.rs → SensorData → Channel → update_task → MQTT publish + display
+sensor_task → SensorData → Channel → update_task (Phase 1)
+  → overflow_detected() → pump_allowed bool
+  → MQTT publish + display update
+  → subscribe to pump/set topic  ← retained ON delivered here
 
-HA button press → MQTT pump/set (PRESS) → update_task
-  → overflow? no  → ENABLE_PUMP.signal(())
-                         ↓
-                     relay_task → pump GPIO (10 s)
-                         ↓
-                     PUMP_STATE.signal(true/false)
-                         ↓
-                     update_task → MQTT pump/state (running/idle)
+update_task (Phase 2, inner loop):
+  MQTT pump/set ON → overflow? no  → reset switch OFF + ENABLE_PUMP.signal(())
+                                              ↓
+                                        relay_task → pump GPIO (10 s)
 
-  → overflow? yes → MQTT pump/state (blocked)
+                   → overflow? yes → reset switch OFF, log blocked
 ```
 
 ### MQTT Integration
 
 **Discovery topics (retained):**
 - `homeassistant/sensor/{DEVICE_ID}_{sensor}/config` — sensor entities
-- `homeassistant/button/{DEVICE_ID}_pump/config` — pump trigger button
-- `homeassistant/sensor/{DEVICE_ID}_pump_state/config` — pump state sensor
-
+- `homeassistant/switch/{DEVICE_ID}_pump/config` — pump switch (retained ON/OFF)
 **State topics:**
 - `{DEVICE_ID}/{sensor}` — sensor readings (`{"value": "..."}`)
 - `{DEVICE_ID}/overflow` — `{"value": "YES"}` (water detected) or `{"value": "NO"}` (dry); raw ADC threshold 2800 (~2217 dry, ~3475 submerged)
-- `{DEVICE_ID}/pump/state` — pump state: `idle` / `running` / `blocked`
 
 **Command topics:**
-- `{DEVICE_ID}/pump/set` — receives `PRESS` from HA button
+- `{DEVICE_ID}/pump/set` — receives `ON` from HA switch (retained); device resets to `OFF` after acting

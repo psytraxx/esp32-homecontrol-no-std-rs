@@ -2,7 +2,7 @@ use embassy_time::{Duration, Timer};
 use esp_hal::gpio::{AnyPin, Level, Output, OutputConfig};
 use log::info;
 
-use crate::{ENABLE_PUMP, PUMP_STATE};
+use crate::ENABLE_PUMP;
 
 const PUMP_RUN_DURATION: Duration = Duration::from_secs(10);
 
@@ -16,12 +16,8 @@ pub async fn relay_task(pin: AnyPin<'static>) {
 
         info!("Turning on pump");
         relay_pin.set_high();
-        PUMP_STATE.signal(true);
-
         Timer::after(PUMP_RUN_DURATION).await;
-
         relay_pin.set_low();
-        PUMP_STATE.signal(false);
         info!("Pump off after 10 s");
     }
 }

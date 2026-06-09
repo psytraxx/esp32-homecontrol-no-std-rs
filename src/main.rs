@@ -57,8 +57,6 @@ mod wifi;
 static CHANNEL: StaticCell<Channel<NoopRawMutex, SensorData, 3>> = StaticCell::new();
 /// Fired by update_task to start a timed pump run (HA command only).
 static ENABLE_PUMP: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-/// Relay task signals pump on/off so update_task can publish state to HA.
-static PUMP_STATE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 /// Fired by main before deep sleep so update_task puts the display to sleep.
 static DISPLAY_SLEEP: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 

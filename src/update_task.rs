@@ -3,7 +3,7 @@ use alloc::{
     string::{String, ToString},
 };
 use core::{num::NonZero, num::ParseIntError, str};
-use embassy_futures::select::{Either4, select4};
+use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::{
     Stack,
     dns::{DnsQueryType, Error as DnsError},
@@ -30,10 +30,10 @@ use static_cell::StaticCell;
 use strum::IntoEnumIterator;
 
 use crate::{
-    DISCOVERY_MESSAGES_SENT, DISPLAY_SLEEP, ENABLE_PUMP, PUMP_STATE,
+    DISCOVERY_MESSAGES_SENT, DISPLAY_SLEEP, ENABLE_PUMP,
     config::{
-        DEVICE_ID, HOMEASSISTANT_BUTTON_TOPIC, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
-        HOMEASSISTANT_SENSOR_TOPIC, MQTT_PUBLISH_ENABLED,
+        DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_TOPIC,
+        HOMEASSISTANT_SWITCH_TOPIC, MQTT_PUBLISH_ENABLED,
     },
     display::{self, Display, DisplayTrait},
     domain::{Sensor, SensorData},
@@ -75,17 +75,45 @@ pub async fn update_task(
         };
 
         let pump_set_topic = format!("{DEVICE_ID}/pump/set");
-        let topic =
-            TopicName::new_unchecked(MqttString::try_from(pump_set_topic.as_str()).unwrap());
 
+        // Phase 1: wait for first sensor reading to know overflow state before
+        // subscribing to the pump topic. This avoids the race where a retained ON
+        // arrives before we know whether the pump is safe to run.
+        let pump_allowed = match select(sensordata_receiver.receive(), DISPLAY_SLEEP.wait()).await {
+            Either::First(sensor_data) => {
+                let allowed = !sensor_data
+                    .data
+                    .iter()
+                    .any(|e| matches!(e, Sensor::OverflowDetected(true)));
+
+                if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await {
+                    error!("Error handling sensor data: {:?}. Reconnecting...", e);
+                    continue 'reconnect;
+                }
+                allowed
+            }
+            Either::Second(_) => {
+                info!("Display sleep signal received");
+                if let Err(e) = display.enable_powersave() {
+                    error!("Error enabling display powersave: {:?}", e);
+                }
+                return;
+            }
+        };
+
+        // Phase 2: now subscribe — retained ON arrives with correct overflow state known.
         let sub_options = SubscriptionOptions {
-            retain_handling: RetainHandling::SendIfNotSubscribedBefore,
+            // Always deliver retained message on subscribe so a pending ON
+            // set while the device was asleep is never missed.
+            retain_handling: RetainHandling::AlwaysSend,
             retain_as_published: false,
             no_local: false,
             qos: QoS::AtMostOnce,
             ..Default::default()
         };
 
+        let topic =
+            TopicName::new_unchecked(MqttString::try_from(pump_set_topic.as_str()).unwrap());
         if let Err(e) = client.subscribe(topic.into(), sub_options).await {
             error!(
                 "Error subscribing to pump command topic: {:?}. Retrying connection...",
@@ -97,18 +125,17 @@ pub async fn update_task(
 
         info!("Subscribed to pump command topic: {}", pump_set_topic);
 
-        // Inner loop for processing events while connected
-        let mut pump_allowed = true; // updated on each sensor reading; safe default is allow
+        // Inner loop: sensor data updates pump_allowed; MQTT delivers pump commands.
+        let mut pump_allowed = pump_allowed;
         loop {
-            match select4(
+            match select3(
                 sensordata_receiver.receive(),
                 client.poll(),
-                PUMP_STATE.wait(),
                 DISPLAY_SLEEP.wait(),
             )
             .await
             {
-                Either4::First(sensor_data) => {
+                Either3::First(sensor_data) => {
                     pump_allowed = !sensor_data
                         .data
                         .iter()
@@ -120,7 +147,7 @@ pub async fn update_task(
                         continue 'reconnect;
                     }
                 }
-                Either4::Second(result) => match result {
+                Either3::Second(result) => match result {
                     Ok(Event::Publish(e)) => {
                         if let Err(e) = process_pump_command(
                             &mut client,
@@ -141,15 +168,7 @@ pub async fn update_task(
                         continue 'reconnect;
                     }
                 },
-                Either4::Third(pump_on) => {
-                    let state = if pump_on { "running" } else { "idle" };
-                    info!("Pump state: {}", state);
-                    if let Err(e) = publish_pump_state(&mut client, state).await {
-                        error!("Error publishing pump state: {:?}. Reconnecting...", e);
-                        continue 'reconnect;
-                    }
-                }
-                Either4::Fourth(_) => {
+                Either3::Third(_) => {
                     info!("Display sleep signal received");
                     if let Err(e) = display.enable_powersave() {
                         error!("Error enabling display powersave: {:?}", e);
@@ -253,8 +272,7 @@ async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(),
             info!("Discovery message sent for sensor: {}", s.name());
         }
 
-        for (discovery_topic, message) in [get_pump_button_discovery(), get_pump_state_discovery()]
-        {
+        for (discovery_topic, message) in [get_pump_switch_discovery()] {
             let topic_ref = TopicReference::Name(TopicName::new_unchecked(
                 MqttString::try_from(discovery_topic.as_str()).unwrap(),
             ));
@@ -268,20 +286,6 @@ async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(),
     } else {
         info!("Discovery messages already sent");
     }
-    Ok(())
-}
-
-async fn publish_pump_state(client: &mut MqttClientImpl<'_>, state: &str) -> Result<(), Error> {
-    let topic_name = format!("{DEVICE_ID}/pump/state");
-    info!("Publishing pump state: {}", state);
-
-    let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-        MqttString::try_from(topic_name.as_str()).unwrap(),
-    ));
-    let options = PublicationOptions::new(topic_ref);
-    client
-        .publish(&options, Bytes::Borrowed(state.as_bytes()))
-        .await?;
     Ok(())
 }
 
@@ -300,16 +304,31 @@ async fn process_pump_command(
         warn!("Invalid UTF-8 message on topic {}", topic);
         return Ok(());
     };
-    if message != "PRESS" {
-        warn!("Unexpected payload on '{}': {}", topic, message);
-        return Ok(());
+    match message {
+        "ON" => {
+            // Reset the switch immediately so HA reflects the outcome,
+            // and a second wake doesn't re-trigger the pump.
+            reset_pump_switch(client).await?;
+            if pump_allowed {
+                info!("Pump command received, starting pump");
+                ENABLE_PUMP.signal(());
+            } else {
+                warn!("Pump command blocked: overflow detected");
+            }
+        }
+        "OFF" => {} // broker echo after our own reset — ignore
+        _ => warn!("Unexpected payload on '{}': {}", topic, message),
     }
-    if pump_allowed {
-        ENABLE_PUMP.signal(());
-    } else {
-        warn!("Pump command blocked: overflow detected");
-        publish_pump_state(client, "blocked").await?;
-    }
+    Ok(())
+}
+
+async fn reset_pump_switch(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
+    let topic_name = format!("{DEVICE_ID}/pump/set");
+    let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+        MqttString::try_from(topic_name.as_str()).unwrap(),
+    ));
+    let options = PublicationOptions::new(topic_ref).retain();
+    client.publish(&options, Bytes::Borrowed(b"OFF")).await?;
     Ok(())
 }
 
@@ -379,24 +398,16 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
     (discovery_topic, payload.to_string())
 }
 
-fn get_pump_button_discovery() -> (String, String) {
+fn get_pump_switch_discovery() -> (String, String) {
     let mut payload = get_common_device_info("pump", "Water pump");
     payload["command_topic"] = json!(format!("{}/pump/set", DEVICE_ID));
-    payload["payload_press"] = json!("PRESS");
+    payload["state_topic"] = json!(format!("{}/pump/set", DEVICE_ID));
+    payload["payload_on"] = json!("ON");
+    payload["payload_off"] = json!("OFF");
+    payload["retain"] = json!(true);
 
     let discovery_topic = format!(
-        "{HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX}/{HOMEASSISTANT_BUTTON_TOPIC}/{DEVICE_ID}_pump/config"
-    );
-    (discovery_topic, payload.to_string())
-}
-
-fn get_pump_state_discovery() -> (String, String) {
-    let mut payload = get_common_device_info("pump_state", "Pump state");
-    payload["state_topic"] = json!(format!("{}/pump/state", DEVICE_ID));
-    payload["unique_id"] = json!(format!("{}_pump_state", DEVICE_ID));
-
-    let discovery_topic = format!(
-        "{HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX}/{HOMEASSISTANT_SENSOR_TOPIC}/{DEVICE_ID}_pump_state/config"
+        "{HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX}/{HOMEASSISTANT_SWITCH_TOPIC}/{DEVICE_ID}_pump/config"
     );
     (discovery_topic, payload.to_string())
 }
