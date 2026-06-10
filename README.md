@@ -13,56 +13,9 @@ Built for [LilyGO T-Display-S3](https://github.com/Xinyuan-LilyGO/T-Display-S3) 
 - USB-C connector
 - Built-in battery management
 
-## Wiring — V1 (Current Hardware)
+## Wiring — V2 Hardware
 
-```mermaid
-graph TD
-    subgraph MCU [ESP32-S3 LilyGO T-Display-S3]
-        G1[GPIO1]
-        G2[GPIO2]
-        G4[GPIO4]
-        G11[GPIO11]
-        G12[GPIO12]
-        G14[GPIO14]
-        G15[GPIO15]
-        G16[GPIO16]
-        G21[GPIO21]
-        G38[GPIO38]
-        GDISP[GPIO 6-9 and 39-48]
-    end
-
-    subgraph PERIPH [Peripherals]
-        DHT[DHT11 Temp and Humidity]
-        RELAY[Pump Relay]
-        BATT[Battery Voltage Divider]
-        MOIST[Capacitive Soil Moisture]
-        MPWR[Moisture Power Switch]
-        WATER[Water Level Sensor]
-        WPWR[Water Level Power Switch]
-        BTN[Wake Button]
-        DPWR[Display Power]
-        BL[Display Backlight]
-        LCD[ST7789 LCD]
-    end
-
-    G1  -->|1-wire bit-bang| DHT
-    G2  -->|digital out| RELAY
-    G4  -->|ADC x2 divider| BATT
-    G11 -->|ADC 11dB| MOIST
-    G16 --> MPWR
-    MPWR -->|power toggle| MOIST
-    G12 -->|ADC 11dB| WATER
-    G21 --> WPWR
-    WPWR -->|power toggle| WATER
-    G14 -->|wake source| BTN
-    G15 --> DPWR
-    G38 --> BL
-    GDISP -->|8-bit parallel| LCD
-```
-
-## Wiring — V2 (Planned Hardware)
-
-> See [HARDWARE_V2.md](HARDWARE_V2.md) for full BOM, crate list, and migration notes.
+> See [HARDWARE_V2.md](HARDWARE_V2.md) for full BOM, crate analysis, and migration notes from V1.
 
 ```mermaid
 graph TD
@@ -78,13 +31,13 @@ graph TD
         GDISP[GPIO 6-9 and 39-48]
     end
 
-    subgraph I2C [I2C Bus - shared SDA and SCL]
+    subgraph I2C [I2C Bus - shared SDA and SCL - 400 kHz]
         AHT[AHT20 plus BMP280 addr 0x38 and 0x76 - Temp Humidity Pressure]
-        SOIL[STEMMA Soil Sensor addr 0x37 - Moisture and Soil Temp]
+        SOIL[STEMMA Soil Sensor addr 0x36 - Moisture and Soil Temp]
         INA[INA219 addr 0x40 - Voltage Current Power]
     end
 
-    subgraph PERIPH [Other Peripherals unchanged]
+    subgraph PERIPH [Other Peripherals]
         RELAY[Pump Relay]
         WATER[Water Level Overflow Sensor]
         WPWR[Water Level Power]
@@ -114,20 +67,15 @@ graph TD
     GDISP -->|8-bit parallel| LCD
 ```
 
-**Key V2 changes:**
-- DHT11 GPIO1 replaced by AHT20+BMP280 over I2C: accuracy improves from +/-2C to +/-0.3C, float precision, adds pressure
-- Capacitive ADC GPIO11/16 replaced by STEMMA Soil over I2C: stable counts, soil temp, no exposed metal oxidation
-- Battery ADC divider GPIO4 replaced by INA219 over I2C: adds current and power measurement, noise drops from +/-60mV to +/-4mV
-- Water level sensor unchanged — intentional binary overflow detection only
-
 ## Core Features
 
-- **Sensor Integration**
+- **Sensor Integration (V2)**
 
-  - DHT11 temperature/humidity monitoring
-  - Capacitive soil moisture sensing (analog)
-  - Water level detection
-  - Battery voltage monitoring
+  - AHT20: air temperature (±0.3 °C) + humidity (±2 %RH) over I2C
+  - BMP280: barometric pressure (±1 hPa) over I2C
+  - STEMMA Soil: capacitive soil moisture counts (200–2000) + soil temperature over I2C
+  - INA219: battery voltage, current draw, and power consumption over I2C
+  - Water level overflow detection (ADC binary threshold — unchanged from V1)
 
 - **Display Interface**
 
@@ -332,7 +280,10 @@ cargo run --release
 
 ### Sensors
 
-- [DHT11 Sensor Integration Example](https://github.com/rust-dd/embedded-dht-rs)
+- [embedded-aht20 crate](https://crates.io/crates/embedded-aht20) — AHT20 async driver
+- [bme280-rs crate](https://crates.io/crates/bme280-rs) — BMP280/BME280 async driver
+- [ina219 crate](https://crates.io/crates/ina219) — INA219 async power monitor driver
+- [stemma_soil_moisture_sensor crate](https://crates.io/crates/stemma_soil_moisture_sensor) — STEMMA Soil Sensor driver
 - [Moisture Sensor Example](https://github.com/nand-nor/plant-minder/blob/4bc70142a9ec11e860b5422deb9d85ad192bab66/pmindp-esp32-thread/src/sensor/probe_circuit.rs#L63)
 
 ### UI & Graphics

@@ -53,6 +53,7 @@ rust-mqtt = { version = "0.5.1", default-features = true, features = [
 embedded-text = "0.7.3"
 embedded-graphics = { version = "0.8.2", features = [] }
 embedded-hal = { version = "1.0.0", features = [] }
+embedded-hal-async = "1.0.0"
 serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.150", default-features = false, features = [
     "alloc",
@@ -64,6 +65,13 @@ strum = { version = "0.28.0", default-features = false }
 strum_macros = "0.28.0"
 critical-section = "1.2.0"
 dht-sensor = "0.3.0"
+
+# V2 sensor drivers
+embedded-aht20 = { version = "0.2.0", features = ["async"] }
+bme280-rs = { version = "0.4", default-features = false, features = ["async"] }
+ina219 = { version = "0.2.1", features = ["async"] }
+embassy-embedded-hal = "0.6"
+stemma_soil_moisture_sensor = "0.2.1"
 
 [profile.dev]
 # Rust debug is too slow.

@@ -50,21 +50,30 @@ The wake cycle is one **linear async flow** in `main.rs::run_cycle()` — no int
 - `BOOT_COUNT` - increments each wake
 - `DISCOVERY_MESSAGES_SENT` - prevents republishing discovery
 
-### Hardware: LilyGO T-Display-S3
+### Hardware: LilyGO T-Display-S3 (V2)
+
+All sensors share a single I2C bus (GPIO3=SDA, GPIO10=SCL, 400 kHz). See `HARDWARE_V2.md` for full BOM and wiring.
 
 | GPIO | Function | Notes |
 |------|----------|-------|
-| 1 | DHT11 sensor | Temperature/humidity |
 | 2 | Pump relay | Active high |
-| 4 | Battery voltage | ADC, 11dB attenuation |
-| 11 | Soil moisture | ADC, 11dB attenuation |
-| 12 | Water level | ADC, 11dB attenuation |
+| 3 | I2C SDA | Shared bus for all sensors |
+| 10 | I2C SCL | Shared bus for all sensors |
+| 12 | Water level | ADC, 11dB attenuation (overflow detector) |
 | 14 | Wake button | Deep sleep wake source |
 | 15 | Display power | **Must be HIGH** |
-| 16 | Moisture sensor power | Toggle for reads |
 | 21 | Water level sensor power | Toggle for reads |
 | 38 | Display backlight | PWM capable |
 | 6-9, 39-48 | ST7789 display | 8-bit parallel interface |
+
+#### I2C Sensors
+
+| Address | Sensor | Measurements |
+|---------|--------|--------------|
+| `0x38` | AHT20 | Air temperature (°C), humidity (%) |
+| `0x76` | BMP280 | Barometric pressure (hPa) |
+| `0x36` | STEMMA Soil | Soil moisture counts (200–2000), soil temperature (°C) |
+| `0x40` | INA219 | Battery voltage (mV), current (mA), power (mW) |
 
 ### Code Organization
 
@@ -108,3 +117,5 @@ join(connect_to_wifi, read_sensors) → (stack, SensorData)
 
 **Command topics:**
 - `{DEVICE_ID}/pump/set` — receives `ON` from HA switch (retained); device resets to `OFF` after acting
+
+Auto-clears retained pump commands after activation. All numeric sensors include `force_update: true` in discovery to prevent HA recorder deduplication.

@@ -14,11 +14,7 @@ pub const WIFI_CONNECT_TIMEOUT_SECONDS: u64 = 30;
 pub const MQTT_PUBLISH_ENABLED: bool = true;
 
 // Sensor sampling configuration
-/// Battery voltage above this threshold (mV) indicates USB charging — skip reading
-pub const USB_CHARGING_VOLTAGE_MV: u16 = 4100;
-/// Warmup delay for DHT11 before each read (ms)
-pub const DHT11_WARMUP_DELAY_MS: u64 = 1000;
 /// Warmup delay for powered ADC sensors (moisture, water level) before each read (ms)
 pub const SENSOR_WARMUP_DELAY_MS: u64 = 50;
-/// Number of samples to collect per sensor per cycle (min/max trimmed, rest averaged)
+/// Number of samples to collect per water-level sensor per cycle (min/max trimmed, rest averaged)
 pub const SENSOR_SAMPLE_COUNT: usize = 5;
