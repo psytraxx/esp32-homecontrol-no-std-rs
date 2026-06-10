@@ -178,7 +178,7 @@ The pump is controlled exclusively via Home Assistant using a **switch entity**.
 5. If overflow detected (raw ADC > 2800; measured ~2217 mV dry, ~3475 mV submerged) — blocked, pump does not run.
 6. Otherwise runs the pump for **10 seconds**.
 
-There is no auto-trigger from soil moisture. The pump cannot be re-triggered while a run is already in progress (Embassy `Signal` drops repeated signals until consumed).
+There is no auto-trigger from soil moisture. The pump run is awaited inline by the wake cycle: commands arriving during a run are processed only after it completes, and the device never enters deep sleep mid-run.
 
 ---
 

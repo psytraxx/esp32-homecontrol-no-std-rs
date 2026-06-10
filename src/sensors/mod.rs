@@ -4,22 +4,15 @@ mod hardware;
 
 pub use hardware::SensorPeripherals;
 
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Sender};
-use embassy_time::{Duration, Timer};
 use log::info;
 
-use crate::{config::AWAKE_DURATION_SECONDS, domain::SensorData};
+use crate::domain::SensorData;
 
-#[embassy_executor::task]
-pub async fn sensor_task(
-    sender: Sender<'static, NoopRawMutex, SensorData, 3>,
-    p: SensorPeripherals,
-) {
-    info!("Initializing sensor task");
+/// Read all sensors once: initialize the hardware, collect one averaged set of
+/// samples and return it. Called once per wake cycle, in parallel with the
+/// WiFi connection.
+pub async fn read_sensors(p: SensorPeripherals) -> SensorData {
+    info!("Initializing sensor hardware");
     let mut hw = hardware::initialize_hardware(p).await;
-    loop {
-        let sensor_data = builder::collect_all_sensor_data(&mut hw).await;
-        sender.send(sensor_data).await;
-        Timer::after(Duration::from_secs(AWAKE_DURATION_SECONDS)).await;
-    }
+    builder::collect_all_sensor_data(&mut hw).await
 }
