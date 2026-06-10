@@ -200,15 +200,15 @@ async fn run_cycle(
     }
     display.write_multiline(&status)?;
 
-    let mut client = mqtt::connect(stack).await?;
-    mqtt::publish(&mut client, &sensor_data).await?;
-    mqtt::subscribe_to_pump_commands(&mut client).await?;
+    let mut session = mqtt::connect(stack).await?;
+    session.publish(&sensor_data).await?;
+    session.subscribe_to_pump_commands().await?;
 
     // Keep listening until the deadline so a switch flipped while the device
     // is awake still works; the retained ON from the sleep period arrives
     // right after subscribing.
     loop {
-        match mqtt::wait_for_pump_command(&mut client, pump_allowed, deadline).await {
+        match session.wait_for_pump_command(pump_allowed, deadline).await {
             Ok(true) => run_pump(pump_pin).await,
             Ok(false) => break, // awake window over
             Err(error) => {

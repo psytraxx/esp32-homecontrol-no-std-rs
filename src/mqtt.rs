@@ -46,12 +46,14 @@ struct MqttResources {
 
 static RESOURCES: StaticCell<MqttResources> = StaticCell::new();
 
-pub type MqttClientImpl<'a> = Client<'a, TcpSocket<'a>, AllocBuffer, 1, 1, 1, 1>;
+type MqttClientImpl<'a> = Client<'a, TcpSocket<'a>, AllocBuffer, 1, 1, 1, 1>;
+
+pub struct MqttSession<'a>(MqttClientImpl<'a>);
 
 /// Resolve the broker, open the TCP socket and connect the MQTT session.
 /// Called once per wake cycle — there is no reconnect loop; on failure the
 /// device simply sleeps and retries on the next wake.
-pub async fn connect(stack: Stack<'static>) -> Result<MqttClientImpl<'static>, Error> {
+pub async fn connect(stack: Stack<'static>) -> Result<MqttSession<'static>, Error> {
     let resources = RESOURCES.init(MqttResources {
         rx_buffer: [0u8; BUFFER_SIZE],
         tx_buffer: [0u8; BUFFER_SIZE],
@@ -107,195 +109,192 @@ pub async fn connect(stack: Stack<'static>) -> Result<MqttClientImpl<'static>, E
 
     info!("MQTT Broker connected");
 
-    Ok(client)
+    Ok(MqttSession(client))
 }
 
-/// Publish discovery messages (first boot only) and the sensor state topics,
-/// honoring the MQTT_PUBLISH_ENABLED development gate.
-pub async fn publish(
-    client: &mut MqttClientImpl<'_>,
-    sensor_data: &SensorData,
-) -> Result<(), Error> {
-    if !MQTT_PUBLISH_ENABLED {
-        info!("MQTT publishing disabled, skipping");
-        return Ok(());
+impl MqttSession<'_> {
+    /// Publish discovery messages (first boot only) and the sensor state topics,
+    /// honoring the MQTT_PUBLISH_ENABLED development gate.
+    pub async fn publish(&mut self, sensor_data: &SensorData) -> Result<(), Error> {
+        if !MQTT_PUBLISH_ENABLED {
+            info!("MQTT publishing disabled, skipping");
+            return Ok(());
+        }
+        self.publish_discovery_topics().await?;
+        self.publish_sensor_data(sensor_data).await
     }
-    publish_discovery_topics(client).await?;
-    publish_sensor_data(client, sensor_data).await
-}
 
-/// Subscribe to the pump command topic. The retained message is always
-/// delivered on subscribe, so an ON set while the device was asleep is never
-/// missed. Callers must establish the overflow state *before* subscribing.
-pub async fn subscribe_to_pump_commands(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
-    let pump_set_topic = pump_set_topic();
+    /// Subscribe to the pump command topic. The retained message is always
+    /// delivered on subscribe, so an ON set while the device was asleep is never
+    /// missed. Callers must establish the overflow state *before* subscribing.
+    pub async fn subscribe_to_pump_commands(&mut self) -> Result<(), Error> {
+        let pump_set_topic = pump_set_topic();
 
-    let sub_options = SubscriptionOptions {
-        // Always deliver retained message on subscribe so a pending ON
-        // set while the device was asleep is never missed.
-        retain_handling: RetainHandling::AlwaysSend,
-        retain_as_published: false,
-        no_local: false,
-        qos: QoS::AtMostOnce,
-        ..Default::default()
-    };
-
-    let topic = TopicName::new_unchecked(MqttString::try_from(pump_set_topic.as_str()).unwrap());
-    client.subscribe(topic.into(), sub_options).await?;
-
-    info!("Subscribed to pump command topic: {}", pump_set_topic);
-    Ok(())
-}
-
-/// Poll the broker for pump commands until `deadline`. Returns `Ok(true)` as
-/// soon as an ON command is accepted (the switch is reset to OFF first), or
-/// `Ok(false)` when the deadline passes without one.
-pub async fn wait_for_pump_command(
-    client: &mut MqttClientImpl<'_>,
-    pump_allowed: bool,
-    deadline: Instant,
-) -> Result<bool, Error> {
-    let pump_set_topic = pump_set_topic();
-    loop {
-        let Ok(event) = with_deadline(deadline, client.poll()).await else {
-            return Ok(false); // awake window over
+        let sub_options = SubscriptionOptions {
+            // Always deliver retained message on subscribe so a pending ON
+            // set while the device was asleep is never missed.
+            retain_handling: RetainHandling::AlwaysSend,
+            retain_as_published: false,
+            no_local: false,
+            qos: QoS::AtMostOnce,
+            ..Default::default()
         };
-        match event {
-            Ok(Event::Publish(e)) => {
-                if process_pump_command(
-                    client,
-                    e.topic.as_ref().as_str(),
-                    e.message.as_ref(),
-                    &pump_set_topic,
-                    pump_allowed,
-                )
-                .await?
-                {
-                    return Ok(true);
+
+        let topic =
+            TopicName::new_unchecked(MqttString::try_from(pump_set_topic.as_str()).unwrap());
+        self.0.subscribe(topic.into(), sub_options).await?;
+
+        info!("Subscribed to pump command topic: {}", pump_set_topic);
+        Ok(())
+    }
+
+    /// Poll the broker for pump commands until `deadline`. Returns `Ok(true)` as
+    /// soon as an ON command is accepted (the switch is reset to OFF first), or
+    /// `Ok(false)` when the deadline passes without one.
+    pub async fn wait_for_pump_command(
+        &mut self,
+        pump_allowed: bool,
+        deadline: Instant,
+    ) -> Result<bool, Error> {
+        let pump_set_topic = pump_set_topic();
+        loop {
+            let Ok(event) = with_deadline(deadline, self.0.poll()).await else {
+                return Ok(false); // awake window over
+            };
+            match event {
+                Ok(Event::Publish(e)) => {
+                    if self
+                        .process_pump_command(
+                            e.topic.as_ref().as_str(),
+                            e.message.as_ref(),
+                            &pump_set_topic,
+                            pump_allowed,
+                        )
+                        .await?
+                    {
+                        return Ok(true);
+                    }
+                }
+                Ok(e) => info!("Received event {:?}", e),
+                Err(e) => {
+                    error!("Error receiving MQTT message: {:?}", e);
+                    return Err(e.into());
                 }
             }
-            Ok(e) => info!("Received event {:?}", e),
-            Err(e) => {
-                error!("Error receiving MQTT message: {:?}", e);
-                return Err(e.into());
+        }
+    }
+
+    async fn publish_discovery_topics(&mut self) -> Result<(), Error> {
+        if !DISCOVERY_MESSAGES_SENT.get() {
+            info!("First run, sending discovery messages");
+
+            for s in Sensor::iter() {
+                let (discovery_topic, message) = get_sensor_discovery(&s);
+
+                let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+                    MqttString::try_from(discovery_topic.as_str()).unwrap(),
+                ));
+                let options = PublicationOptions::new(topic_ref).retain();
+
+                self.0
+                    .publish(&options, Bytes::Borrowed(message.as_bytes()))
+                    .await?;
+                info!("Discovery message sent for sensor: {}", s.name());
+            }
+
+            for (discovery_topic, message) in [get_pump_switch_discovery()] {
+                let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+                    MqttString::try_from(discovery_topic.as_str()).unwrap(),
+                ));
+                let options = PublicationOptions::new(topic_ref).retain();
+                self.0
+                    .publish(&options, Bytes::Borrowed(message.as_bytes()))
+                    .await?;
+            }
+
+            DISCOVERY_MESSAGES_SENT.set(true);
+        } else {
+            info!("Discovery messages already sent");
+        }
+        Ok(())
+    }
+
+    /// Returns true when an ON command was accepted and the pump should run.
+    async fn process_pump_command(
+        &mut self,
+        topic: &str,
+        data: &[u8],
+        pump_set_topic: &str,
+        pump_allowed: bool,
+    ) -> Result<bool, Error> {
+        if topic != pump_set_topic {
+            warn!("Message on unhandled topic: {}", topic);
+            return Ok(false);
+        }
+        let Ok(message) = str::from_utf8(data) else {
+            warn!("Invalid UTF-8 message on topic {}", topic);
+            return Ok(false);
+        };
+        match message {
+            "ON" => {
+                // Reset the switch immediately so HA reflects the outcome,
+                // and a second wake doesn't re-trigger the pump.
+                self.reset_pump_switch().await?;
+                if pump_allowed {
+                    info!("Pump command received, starting pump");
+                    Ok(true)
+                } else {
+                    warn!("Pump command blocked: overflow detected");
+                    Ok(false)
+                }
+            }
+            "OFF" => Ok(false), // broker echo after our own reset — ignore
+            _ => {
+                warn!("Unexpected payload on '{}': {}", topic, message);
+                Ok(false)
             }
         }
+    }
+
+    async fn reset_pump_switch(&mut self) -> Result<(), Error> {
+        let topic_name = pump_set_topic();
+        let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+            MqttString::try_from(topic_name.as_str()).unwrap(),
+        ));
+        let options = PublicationOptions::new(topic_ref).retain();
+        self.0.publish(&options, Bytes::Borrowed(b"OFF")).await?;
+        Ok(())
+    }
+
+    async fn publish_sensor_data(&mut self, sensor_data: &SensorData) -> Result<(), Error> {
+        for s in &sensor_data.data {
+            let key = s.topic();
+            let value = s.value();
+            let message = json!({ "value": value }).to_string();
+            let topic_name = format!("{DEVICE_ID}/{key}");
+
+            info!(
+                "Publishing to topic {}, message: {}",
+                topic_name.as_str(),
+                message.as_str()
+            );
+
+            let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+                MqttString::try_from(topic_name.as_str()).unwrap(),
+            ));
+            let options = PublicationOptions::new(topic_ref);
+
+            self.0
+                .publish(&options, Bytes::Borrowed(message.as_bytes()))
+                .await?;
+        }
+
+        Ok(())
     }
 }
 
 fn pump_set_topic() -> String {
     format!("{DEVICE_ID}/pump/set")
-}
-
-async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
-    if !DISCOVERY_MESSAGES_SENT.get() {
-        info!("First run, sending discovery messages");
-
-        for s in Sensor::iter() {
-            let (discovery_topic, message) = get_sensor_discovery(&s);
-
-            let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-                MqttString::try_from(discovery_topic.as_str()).unwrap(),
-            ));
-            let options = PublicationOptions::new(topic_ref).retain();
-
-            client
-                .publish(&options, Bytes::Borrowed(message.as_bytes()))
-                .await?;
-            info!("Discovery message sent for sensor: {}", s.name());
-        }
-
-        for (discovery_topic, message) in [get_pump_switch_discovery()] {
-            let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-                MqttString::try_from(discovery_topic.as_str()).unwrap(),
-            ));
-            let options = PublicationOptions::new(topic_ref).retain();
-            client
-                .publish(&options, Bytes::Borrowed(message.as_bytes()))
-                .await?;
-        }
-
-        DISCOVERY_MESSAGES_SENT.set(true);
-    } else {
-        info!("Discovery messages already sent");
-    }
-    Ok(())
-}
-
-/// Returns true when an ON command was accepted and the pump should run.
-async fn process_pump_command(
-    client: &mut MqttClientImpl<'_>,
-    topic: &str,
-    data: &[u8],
-    pump_set_topic: &str,
-    pump_allowed: bool,
-) -> Result<bool, Error> {
-    if topic != pump_set_topic {
-        warn!("Message on unhandled topic: {}", topic);
-        return Ok(false);
-    }
-    let Ok(message) = str::from_utf8(data) else {
-        warn!("Invalid UTF-8 message on topic {}", topic);
-        return Ok(false);
-    };
-    match message {
-        "ON" => {
-            // Reset the switch immediately so HA reflects the outcome,
-            // and a second wake doesn't re-trigger the pump.
-            reset_pump_switch(client).await?;
-            if pump_allowed {
-                info!("Pump command received, starting pump");
-                Ok(true)
-            } else {
-                warn!("Pump command blocked: overflow detected");
-                Ok(false)
-            }
-        }
-        "OFF" => Ok(false), // broker echo after our own reset — ignore
-        _ => {
-            warn!("Unexpected payload on '{}': {}", topic, message);
-            Ok(false)
-        }
-    }
-}
-
-async fn reset_pump_switch(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
-    let topic_name = pump_set_topic();
-    let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-        MqttString::try_from(topic_name.as_str()).unwrap(),
-    ));
-    let options = PublicationOptions::new(topic_ref).retain();
-    client.publish(&options, Bytes::Borrowed(b"OFF")).await?;
-    Ok(())
-}
-
-async fn publish_sensor_data(
-    client: &mut MqttClientImpl<'_>,
-    sensor_data: &SensorData,
-) -> Result<(), Error> {
-    for s in &sensor_data.data {
-        let key = s.topic();
-        let value = s.value();
-        let message = json!({ "value": value }).to_string();
-        let topic_name = format!("{DEVICE_ID}/{key}");
-
-        info!(
-            "Publishing to topic {}, message: {}",
-            topic_name.as_str(),
-            message.as_str()
-        );
-
-        let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-            MqttString::try_from(topic_name.as_str()).unwrap(),
-        ));
-        let options = PublicationOptions::new(topic_ref);
-
-        client
-            .publish(&options, Bytes::Borrowed(message.as_bytes()))
-            .await?;
-    }
-
-    Ok(())
 }
 
 fn get_sensor_discovery(s: &Sensor) -> (String, String) {
