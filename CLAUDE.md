@@ -33,21 +33,18 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 - `WIFI_SSID`, `WIFI_PSK` - WiFi credentials
 - `MQTT_HOSTNAME`, `MQTT_USERNAME`, `MQTT_PASSWORD`, `MQTT_PORT` - MQTT broker config
 
-### Task Architecture
-- **sensor_task**: Reads all sensors once per wake cycle → sends via channel to update_task
-- **update_task**: MQTT publishing, display updates, HA discovery, pump state reporting
-- **relay_task**: Runs pump for 10 s on `ENABLE_PUMP` signal
-- **connect_to_wifi / net_task**: WiFi management, graceful shutdown via `STOP_WIFI_SIGNAL`
+### Architecture
+The wake cycle is one **linear async flow** in `main.rs::run_cycle()` — no inter-task channels or signals besides `WIFI_SIGNAL`. The only spawned tasks are the WiFi ones (`net_task` polls the embassy-net runner; `connection` reconnects on drop and disconnects gracefully on `WIFI_SIGNAL`). Sensors, display, MQTT and pump are plain async functions called in order; `main` always reaches `enter_deep`, so a failed cycle (router down, broker unreachable) retries in an hour instead of boot-looping.
 
 ### Sleep Cycle
 1. Wake from deep sleep (button or timer)
-2. Connect WiFi
-3. Read sensors (Phase 1 — establishes overflow state)
-4. Subscribe to pump command topic (retained ON delivered with overflow state already known)
-5. Publish discovery (first boot only)
-6. Publish sensors; process pump command if pending
-7. Disconnect WiFi gracefully
-8. Sleep ~1 hour
+2. Connect WiFi **in parallel with** reading all sensors (`join` — DHCP overlaps the DHT11 warmup; WiFi bounded by `WIFI_CONNECT_TIMEOUT_SECONDS`)
+3. Overflow state is now a local — compute `pump_allowed` before MQTT exists (retained ON can never race the interlock)
+4. Update display (IP/boot count prepended on button wake)
+5. Connect MQTT; publish discovery (first boot only) and sensor state
+6. Subscribe to pump command topic (retained ON delivered here)
+7. Poll for pump commands until the `AWAKE_DURATION_SECONDS` deadline; an accepted ON resets the switch to OFF, then runs the pump 10 s **inline** (deep sleep can't truncate a run)
+8. Disconnect WiFi gracefully, display powersave, sleep ~1 hour
 
 **RTC Fast Memory** (survives deep sleep):
 - `BOOT_COUNT` - increments each wake
@@ -73,13 +70,13 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 
 | File | Purpose |
 |------|---------|
-| [main.rs](src/main.rs) | Entry, peripheral setup, task spawning, global signals |
-| [sensors/mod.rs](src/sensors/mod.rs) | Embassy task entry for sensor sampling |
+| [main.rs](src/main.rs) | Entry, peripheral setup, linear wake cycle (`run_cycle`), sleep orchestration |
+| [sensors/mod.rs](src/sensors/mod.rs) | `read_sensors()` — one-shot sampling of all sensors |
 | [sensors/builder.rs](src/sensors/builder.rs) | Assembles `SensorData` from raw samples |
 | [sensors/adc.rs](src/sensors/adc.rs) | Generic ADC sampling, averaging, outlier removal |
 | [sensors/hardware.rs](src/sensors/hardware.rs) | Peripheral init for all sensor hardware |
-| [update_task.rs](src/update_task.rs) | MQTT client, HA discovery, pump state publishing |
-| [relay_task.rs](src/relay_task.rs) | 10 s pump run on `ENABLE_PUMP` signal |
+| [mqtt.rs](src/mqtt.rs) | MQTT connect, HA discovery, sensor publishing, pump command window |
+| [pump.rs](src/pump.rs) | `run_pump()` — inline 10 s relay run |
 | [wifi.rs](src/wifi.rs) | WiFi connection, graceful shutdown |
 | [sleep.rs](src/sleep.rs) | Deep sleep with RTC memory, dual wake sources |
 | [display.rs](src/display.rs) | ST7789 LCD with embedded-graphics, powersave control |
@@ -89,17 +86,15 @@ cp .env.dist .env  # Edit with WiFi/MQTT credentials
 ### Data Flow
 
 ```
-sensor_task → SensorData → Channel → update_task (Phase 1)
-  → overflow_detected() → pump_allowed bool
-  → MQTT publish + display update
+join(connect_to_wifi, read_sensors) → (stack, SensorData)
+  → overflow_detected() → pump_allowed (local bool)
+  → display update
+  → mqtt::connect → publish discovery + sensors
   → subscribe to pump/set topic  ← retained ON delivered here
-
-update_task (Phase 2, inner loop):
-  MQTT pump/set ON → overflow? no  → reset switch OFF + ENABLE_PUMP.signal(())
-                                              ↓
-                                        relay_task → pump GPIO (10 s)
-
-                   → overflow? yes → reset switch OFF, log blocked
+  → poll until awake deadline:
+      ON → reset switch OFF → pump_allowed? → run_pump (10 s, inline)
+                            → overflow?     → log blocked
+  → display powersave → wifi disconnect → deep sleep
 ```
 
 ### MQTT Integration
