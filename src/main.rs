@@ -7,38 +7,33 @@
 )]
 
 use alloc::format;
-use config::{AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS};
+use config::{AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS, WIFI_CONNECT_TIMEOUT_SECONDS};
 use display::{Display, DisplayPeripherals, DisplayTrait};
-use domain::SensorData;
+use domain::Sensor;
 use embassy_executor::Spawner;
-use embassy_sync::{
-    blocking_mutex::raw::{CriticalSectionRawMutex, NoopRawMutex},
-    channel::Channel,
-    signal::Signal,
-};
-use embassy_time::{Delay, Duration, Timer};
+use embassy_futures::join::join;
+use embassy_time::{Delay, Duration, Instant, Timer, with_timeout};
 use esp_alloc::{heap_allocator, psram_allocator};
 use esp_backtrace as _;
 use esp_hal::{
     Config,
     clock::CpuClock,
     gpio::{Level, Output, OutputConfig, Pin},
+    peripherals::WIFI,
     ram,
     rng::Rng,
     rtc_cntl::wakeup_cause,
-    system::{SleepSource, software_reset},
+    system::SleepSource,
     timer::timg::TimerGroup,
 };
 use esp_println::logger::init_logger;
 use esp_radio::wifi::WifiError;
 use esp_rtos::main;
 use log::{error, info};
-use relay_task::relay_task;
+use pump::run_pump;
 use rtc_memory::RtcCell;
-use sensors::{SensorPeripherals, sensor_task};
+use sensors::{SensorPeripherals, read_sensors};
 use sleep::enter_deep;
-use static_cell::StaticCell;
-use update_task::update_task;
 use wifi::{WIFI_SIGNAL, connect_to_wifi};
 
 extern crate alloc;
@@ -46,19 +41,12 @@ extern crate alloc;
 mod config;
 mod display;
 mod domain;
-mod relay_task;
+mod mqtt;
+mod pump;
 mod rtc_memory;
 mod sensors;
 mod sleep;
-mod update_task;
 mod wifi;
-
-/// A channel between sensor sampler and display updater
-static CHANNEL: StaticCell<Channel<NoopRawMutex, SensorData, 3>> = StaticCell::new();
-/// Fired by update_task to start a timed pump run (HA command only).
-static ENABLE_PUMP: Signal<CriticalSectionRawMutex, ()> = Signal::new();
-/// Fired by main before deep sleep so update_task puts the display to sleep.
-static DISPLAY_SLEEP: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 /// Stored boot count between deep sleep cycles
 ///
@@ -84,13 +72,6 @@ async fn main(spawner: Spawner) {
     info!("Current boot count = {}", boot_count);
     BOOT_COUNT.set(boot_count + 1);
 
-    if let Err(error) = main_fallible(spawner, boot_count).await {
-        error!("Error while running firmware: {:?}", error);
-        software_reset()
-    }
-}
-
-async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let peripherals = esp_hal::init(Config::default().with_cpu_clock(CpuClock::_80MHz));
 
     heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 73744);
@@ -106,10 +87,7 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
     power_pin.set_high();
 
-    let rng = Rng::new();
-    let seed = (rng.random() as u64) << 32 | rng.random() as u64;
-
-    let stack = connect_to_wifi(peripherals.WIFI, seed, spawner).await?;
+    let mut pump_pin = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
 
     let display_peripherals = DisplayPeripherals {
         backlight: peripherals.GPIO38.degrade(),
@@ -128,33 +106,6 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
         d7: peripherals.GPIO48.degrade(),
     };
 
-    // Skip display init on timer wakes — nobody is watching.
-    let button_wake = matches!(wakeup_cause(), SleepSource::Ext0);
-    let mut display = Display::new(display_peripherals, Delay, button_wake)?;
-
-    if button_wake {
-        if let Some(stack_config) = stack.config_v4() {
-            display.write_multiline(
-                format!(
-                    "Client IP: {}\nBoot count: {}",
-                    stack_config.address, boot_count
-                )
-                .as_str(),
-            )?;
-        } else {
-            error!("Failed to get stack config");
-        }
-    }
-
-    info!("Create channel");
-    let sensordata_channel: &'static mut _ = CHANNEL.init(Channel::new());
-    let sensordata_receiver = sensordata_channel.receiver();
-    let sensordata_sender = sensordata_channel.sender();
-
-    spawner.spawn(
-        update_task(stack, display, sensordata_receiver).expect("Unable to start update task"),
-    );
-
     // see https://github.com/Xinyuan-LilyGO/T-Display-S3/blob/main/image/T-DISPLAY-S3.jpg
     let sensor_peripherals = SensorPeripherals {
         dht11_digital_pin: peripherals.GPIO1,
@@ -167,20 +118,24 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
         adc2: peripherals.ADC2,
     };
 
-    spawner.spawn(
-        sensor_task(sensordata_sender, sensor_peripherals).expect("Unable to start sensor task"),
-    );
+    // The wake cycle is fallible, but the device always goes back to sleep:
+    // a failed cycle (router down, broker unreachable) retries in an hour
+    // instead of boot-looping with the radio on.
+    if let Err(error) = run_cycle(
+        spawner,
+        peripherals.WIFI,
+        display_peripherals,
+        sensor_peripherals,
+        &mut pump_pin,
+        boot_count,
+    )
+    .await
+    {
+        error!("Error while running wake cycle: {error:?}");
+    }
 
-    spawner.spawn(relay_task(peripherals.GPIO2.degrade()).expect("Unable to start relay task"));
-
-    let awake_duration = Duration::from_secs(AWAKE_DURATION_SECONDS);
-
-    info!("Stay awake for {}s", awake_duration.as_secs());
-    Timer::after(awake_duration).await;
     info!("Request to disconnect wifi");
     WIFI_SIGNAL.signal(());
-    info!("Request to put display to sleep");
-    DISPLAY_SLEEP.signal(());
 
     // set power pin to low to save power
     power_pin.set_low();
@@ -193,17 +148,96 @@ async fn main_fallible(spawner: Spawner, boot_count: u32) -> Result<(), Error> {
     enter_deep(&mut wake_up_btn_pin, peripherals.LPWR, deep_sleep_duration);
 }
 
+/// One linear wake cycle: connect WiFi while sampling sensors, show the
+/// readings, publish to MQTT, then listen for pump commands until the awake
+/// window closes.
+async fn run_cycle(
+    spawner: Spawner,
+    wifi: WIFI<'static>,
+    display_peripherals: DisplayPeripherals,
+    sensor_peripherals: SensorPeripherals,
+    pump_pin: &mut Output<'static>,
+    boot_count: u32,
+) -> Result<(), Error> {
+    // Everything in the cycle works against one deadline: whatever time WiFi,
+    // sensors and publishing don't use remains as the MQTT command window.
+    let deadline = Instant::now() + Duration::from_secs(AWAKE_DURATION_SECONDS);
+
+    let rng = Rng::new();
+    let seed = (rng.random() as u64) << 32 | rng.random() as u64;
+
+    // Overlap the slow WiFi/DHCP handshake with the DHT11 warmup and ADC sampling.
+    let (stack, sensor_data) = join(
+        with_timeout(
+            Duration::from_secs(WIFI_CONNECT_TIMEOUT_SECONDS),
+            connect_to_wifi(wifi, seed, spawner),
+        ),
+        read_sensors(sensor_peripherals),
+    )
+    .await;
+    let stack = stack.map_err(|_| Error::WifiTimeout)??;
+
+    // Overflow state is established before MQTT ever connects, so a retained
+    // ON command can never race the interlock.
+    let pump_allowed = !sensor_data
+        .data
+        .iter()
+        .any(|e| matches!(e, Sensor::OverflowDetected(true)));
+
+    let button_wake = matches!(wakeup_cause(), SleepSource::Ext0);
+    let mut display = Display::new(display_peripherals, Delay, button_wake)?;
+
+    let mut status = format!("{sensor_data}");
+    if button_wake {
+        if let Some(stack_config) = stack.config_v4() {
+            status = format!(
+                "Client IP: {}\nBoot count: {}\n{}",
+                stack_config.address, boot_count, status
+            );
+        } else {
+            error!("Failed to get stack config");
+        }
+    }
+    display.write_multiline(&status)?;
+
+    let mut client = mqtt::connect(stack).await?;
+    mqtt::publish(&mut client, &sensor_data).await?;
+    mqtt::subscribe_to_pump_commands(&mut client).await?;
+
+    // Keep listening until the deadline so a switch flipped while the device
+    // is awake still works; the retained ON from the sleep period arrives
+    // right after subscribing.
+    loop {
+        match mqtt::wait_for_pump_command(&mut client, pump_allowed, deadline).await {
+            Ok(true) => run_pump(pump_pin).await,
+            Ok(false) => break, // awake window over
+            Err(error) => {
+                // No reconnect: the next wake is in an hour anyway.
+                error!("MQTT error during command window: {error}");
+                break;
+            }
+        }
+    }
+
+    display.enable_powersave()?;
+    Ok(())
+}
+
 #[derive(Debug)]
 enum Error {
     Wifi(WifiError),
+    WifiTimeout,
     Display(display::Error),
+    Mqtt(mqtt::Error),
 }
 
 impl core::fmt::Display for Error {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
             Error::Wifi(error) => write!(f, "Wifi error: {error:?}"),
+            Error::WifiTimeout => write!(f, "Wifi connection timed out"),
             Error::Display(error) => write!(f, "Display error: {error}"),
+            Error::Mqtt(error) => write!(f, "MQTT error: {error}"),
         }
     }
 }
@@ -217,5 +251,11 @@ impl From<WifiError> for Error {
 impl From<display::Error> for Error {
     fn from(error: display::Error) -> Self {
         Self::Display(error)
+    }
+}
+
+impl From<mqtt::Error> for Error {
+    fn from(error: mqtt::Error) -> Self {
+        Self::Mqtt(error)
     }
 }

@@ -3,14 +3,12 @@ use alloc::{
     string::{String, ToString},
 };
 use core::{num::NonZero, num::ParseIntError, str};
-use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::{
     Stack,
     dns::{DnsQueryType, Error as DnsError},
     tcp::{ConnectError, TcpSocket},
 };
-use embassy_sync::{blocking_mutex::raw::NoopRawMutex, channel::Receiver};
-use embassy_time::{Delay, Duration, Timer};
+use embassy_time::{Instant, with_deadline};
 use log::{error, info, warn};
 use rust_mqtt::{
     Bytes,
@@ -30,12 +28,11 @@ use static_cell::StaticCell;
 use strum::IntoEnumIterator;
 
 use crate::{
-    DISCOVERY_MESSAGES_SENT, DISPLAY_SLEEP, ENABLE_PUMP,
+    DISCOVERY_MESSAGES_SENT,
     config::{
         DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_TOPIC,
         HOMEASSISTANT_SWITCH_TOPIC, MQTT_PUBLISH_ENABLED,
     },
-    display::{self, Display, DisplayTrait},
     domain::{Sensor, SensorData},
 };
 
@@ -49,143 +46,18 @@ struct MqttResources {
 
 static RESOURCES: StaticCell<MqttResources> = StaticCell::new();
 
-#[embassy_executor::task]
-pub async fn update_task(
-    stack: Stack<'static>,
-    mut display: Display<'static, Delay>,
-    sensordata_receiver: Receiver<'static, NoopRawMutex, SensorData, 3>,
-) {
-    let resources = MqttResources {
+pub type MqttClientImpl<'a> = Client<'a, TcpSocket<'a>, AllocBuffer, 1, 1, 1, 1>;
+
+/// Resolve the broker, open the TCP socket and connect the MQTT session.
+/// Called once per wake cycle — there is no reconnect loop; on failure the
+/// device simply sleeps and retries on the next wake.
+pub async fn connect(stack: Stack<'static>) -> Result<MqttClientImpl<'static>, Error> {
+    let resources = RESOURCES.init(MqttResources {
         rx_buffer: [0u8; BUFFER_SIZE],
         tx_buffer: [0u8; BUFFER_SIZE],
         alloc_buffer: AllocBuffer,
-    };
+    });
 
-    let resources = RESOURCES.init(resources);
-
-    // Outer loop for handling reconnections
-    'reconnect: loop {
-        let mut client = match initialize_mqtt_client(stack, resources).await {
-            Ok(client) => client,
-            Err(e) => {
-                error!("Error initializing MQTT client: {:?}. Retrying in 5s...", e);
-                Timer::after(Duration::from_secs(5)).await;
-                continue 'reconnect;
-            }
-        };
-
-        let pump_set_topic = format!("{DEVICE_ID}/pump/set");
-
-        // Phase 1: wait for first sensor reading to know overflow state before
-        // subscribing to the pump topic. This avoids the race where a retained ON
-        // arrives before we know whether the pump is safe to run.
-        let pump_allowed = match select(sensordata_receiver.receive(), DISPLAY_SLEEP.wait()).await {
-            Either::First(sensor_data) => {
-                let allowed = !sensor_data
-                    .data
-                    .iter()
-                    .any(|e| matches!(e, Sensor::OverflowDetected(true)));
-
-                if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await {
-                    error!("Error handling sensor data: {:?}. Reconnecting...", e);
-                    continue 'reconnect;
-                }
-                allowed
-            }
-            Either::Second(_) => {
-                info!("Display sleep signal received");
-                if let Err(e) = display.enable_powersave() {
-                    error!("Error enabling display powersave: {:?}", e);
-                }
-                return;
-            }
-        };
-
-        // Phase 2: now subscribe — retained ON arrives with correct overflow state known.
-        let sub_options = SubscriptionOptions {
-            // Always deliver retained message on subscribe so a pending ON
-            // set while the device was asleep is never missed.
-            retain_handling: RetainHandling::AlwaysSend,
-            retain_as_published: false,
-            no_local: false,
-            qos: QoS::AtMostOnce,
-            ..Default::default()
-        };
-
-        let topic =
-            TopicName::new_unchecked(MqttString::try_from(pump_set_topic.as_str()).unwrap());
-        if let Err(e) = client.subscribe(topic.into(), sub_options).await {
-            error!(
-                "Error subscribing to pump command topic: {:?}. Retrying connection...",
-                e
-            );
-            Timer::after(Duration::from_secs(5)).await;
-            continue 'reconnect;
-        }
-
-        info!("Subscribed to pump command topic: {}", pump_set_topic);
-
-        // Inner loop: sensor data updates pump_allowed; MQTT delivers pump commands.
-        let mut pump_allowed = pump_allowed;
-        loop {
-            match select3(
-                sensordata_receiver.receive(),
-                client.poll(),
-                DISPLAY_SLEEP.wait(),
-            )
-            .await
-            {
-                Either3::First(sensor_data) => {
-                    pump_allowed = !sensor_data
-                        .data
-                        .iter()
-                        .any(|e| matches!(e, Sensor::OverflowDetected(true)));
-
-                    if let Err(e) = handle_sensor_data(&mut client, &mut display, sensor_data).await
-                    {
-                        error!("Error handling sensor data: {:?}. Reconnecting...", e);
-                        continue 'reconnect;
-                    }
-                }
-                Either3::Second(result) => match result {
-                    Ok(Event::Publish(e)) => {
-                        if let Err(e) = process_pump_command(
-                            &mut client,
-                            e.topic.as_ref().as_str(),
-                            e.message.as_ref(),
-                            &pump_set_topic,
-                            pump_allowed,
-                        )
-                        .await
-                        {
-                            error!("Error processing pump command: {:?}. Reconnecting...", e);
-                            continue 'reconnect;
-                        }
-                    }
-                    Ok(e) => info!("Received event {:?}", e),
-                    Err(e) => {
-                        error!("Error receiving MQTT message: {:?}. Reconnecting...", e);
-                        continue 'reconnect;
-                    }
-                },
-                Either3::Third(_) => {
-                    info!("Display sleep signal received");
-                    if let Err(e) = display.enable_powersave() {
-                        error!("Error enabling display powersave: {:?}", e);
-                    }
-                    return;
-                }
-            }
-        }
-    }
-}
-
-type MqttClientImpl<'a> = Client<'a, TcpSocket<'a>, AllocBuffer, 1, 1, 1, 1>;
-
-async fn initialize_mqtt_client<'a>(
-    stack: Stack<'static>,
-    resources: &'a mut MqttResources,
-) -> Result<MqttClientImpl<'a>, Error> {
     let mut socket = TcpSocket::new(stack, &mut resources.rx_buffer, &mut resources.tx_buffer);
 
     let host_addr = stack
@@ -238,20 +110,81 @@ async fn initialize_mqtt_client<'a>(
     Ok(client)
 }
 
-async fn handle_sensor_data(
+/// Publish discovery messages (first boot only) and the sensor state topics,
+/// honoring the MQTT_PUBLISH_ENABLED development gate.
+pub async fn publish(
     client: &mut MqttClientImpl<'_>,
-    display: &mut Display<'static, Delay>,
-    sensor_data: SensorData,
+    sensor_data: &SensorData,
 ) -> Result<(), Error> {
-    if MQTT_PUBLISH_ENABLED {
-        publish_discovery_topics(client).await?;
-        publish_sensor_data(client, &sensor_data).await?;
-    } else {
+    if !MQTT_PUBLISH_ENABLED {
         info!("MQTT publishing disabled, skipping");
+        return Ok(());
     }
+    publish_discovery_topics(client).await?;
+    publish_sensor_data(client, sensor_data).await
+}
 
-    process_display(display, &sensor_data).await?;
+/// Subscribe to the pump command topic. The retained message is always
+/// delivered on subscribe, so an ON set while the device was asleep is never
+/// missed. Callers must establish the overflow state *before* subscribing.
+pub async fn subscribe_to_pump_commands(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
+    let pump_set_topic = pump_set_topic();
+
+    let sub_options = SubscriptionOptions {
+        // Always deliver retained message on subscribe so a pending ON
+        // set while the device was asleep is never missed.
+        retain_handling: RetainHandling::AlwaysSend,
+        retain_as_published: false,
+        no_local: false,
+        qos: QoS::AtMostOnce,
+        ..Default::default()
+    };
+
+    let topic = TopicName::new_unchecked(MqttString::try_from(pump_set_topic.as_str()).unwrap());
+    client.subscribe(topic.into(), sub_options).await?;
+
+    info!("Subscribed to pump command topic: {}", pump_set_topic);
     Ok(())
+}
+
+/// Poll the broker for pump commands until `deadline`. Returns `Ok(true)` as
+/// soon as an ON command is accepted (the switch is reset to OFF first), or
+/// `Ok(false)` when the deadline passes without one.
+pub async fn wait_for_pump_command(
+    client: &mut MqttClientImpl<'_>,
+    pump_allowed: bool,
+    deadline: Instant,
+) -> Result<bool, Error> {
+    let pump_set_topic = pump_set_topic();
+    loop {
+        let Ok(event) = with_deadline(deadline, client.poll()).await else {
+            return Ok(false); // awake window over
+        };
+        match event {
+            Ok(Event::Publish(e)) => {
+                if process_pump_command(
+                    client,
+                    e.topic.as_ref().as_str(),
+                    e.message.as_ref(),
+                    &pump_set_topic,
+                    pump_allowed,
+                )
+                .await?
+                {
+                    return Ok(true);
+                }
+            }
+            Ok(e) => info!("Received event {:?}", e),
+            Err(e) => {
+                error!("Error receiving MQTT message: {:?}", e);
+                return Err(e.into());
+            }
+        }
+    }
+}
+
+fn pump_set_topic() -> String {
+    format!("{DEVICE_ID}/pump/set")
 }
 
 async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
@@ -289,20 +222,21 @@ async fn publish_discovery_topics(client: &mut MqttClientImpl<'_>) -> Result<(),
     Ok(())
 }
 
+/// Returns true when an ON command was accepted and the pump should run.
 async fn process_pump_command(
     client: &mut MqttClientImpl<'_>,
     topic: &str,
     data: &[u8],
     pump_set_topic: &str,
     pump_allowed: bool,
-) -> Result<(), Error> {
+) -> Result<bool, Error> {
     if topic != pump_set_topic {
         warn!("Message on unhandled topic: {}", topic);
-        return Ok(());
+        return Ok(false);
     }
     let Ok(message) = str::from_utf8(data) else {
         warn!("Invalid UTF-8 message on topic {}", topic);
-        return Ok(());
+        return Ok(false);
     };
     match message {
         "ON" => {
@@ -311,19 +245,22 @@ async fn process_pump_command(
             reset_pump_switch(client).await?;
             if pump_allowed {
                 info!("Pump command received, starting pump");
-                ENABLE_PUMP.signal(());
+                Ok(true)
             } else {
                 warn!("Pump command blocked: overflow detected");
+                Ok(false)
             }
         }
-        "OFF" => {} // broker echo after our own reset — ignore
-        _ => warn!("Unexpected payload on '{}': {}", topic, message),
+        "OFF" => Ok(false), // broker echo after our own reset — ignore
+        _ => {
+            warn!("Unexpected payload on '{}': {}", topic, message);
+            Ok(false)
+        }
     }
-    Ok(())
 }
 
 async fn reset_pump_switch(client: &mut MqttClientImpl<'_>) -> Result<(), Error> {
-    let topic_name = format!("{DEVICE_ID}/pump/set");
+    let topic_name = pump_set_topic();
     let topic_ref = TopicReference::Name(TopicName::new_unchecked(
         MqttString::try_from(topic_name.as_str()).unwrap(),
     ));
@@ -358,14 +295,6 @@ async fn publish_sensor_data(
             .await?;
     }
 
-    Ok(())
-}
-
-async fn process_display(
-    display: &mut Display<'static, Delay>,
-    sensor_data: &SensorData,
-) -> Result<(), Error> {
-    display.write_multiline(&format!("{sensor_data}"))?;
     Ok(())
 }
 
@@ -426,12 +355,11 @@ fn get_common_device_info(topic: &str, name: &str) -> Value {
 }
 
 #[derive(Debug)]
-enum Error {
+pub enum Error {
     Port,
     Dns(DnsError),
     Connection(ConnectError),
     Broker(ReasonCode),
-    Display(display::Error),
     Mqtt,
 }
 
@@ -442,7 +370,6 @@ impl core::fmt::Display for Error {
             Error::Dns(e) => write!(f, "DNS error: {e:?}"),
             Error::Connection(e) => write!(f, "Connection error: {e:?}"),
             Error::Broker(e) => write!(f, "Broker error: {e:?}"),
-            Error::Display(e) => write!(f, "Display error: {e:?}"),
             Error::Mqtt => write!(f, "MQTT error"),
         }
     }
@@ -469,12 +396,6 @@ impl From<ParseIntError> for Error {
 impl From<ReasonCode> for Error {
     fn from(error: ReasonCode) -> Self {
         Self::Broker(error)
-    }
-}
-
-impl From<display::Error> for Error {
-    fn from(error: display::Error) -> Self {
-        Self::Display(error)
     }
 }
 
