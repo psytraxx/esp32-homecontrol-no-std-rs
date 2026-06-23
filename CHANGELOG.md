@@ -8,6 +8,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **Wake-cycle stability (DHT11 failures, WiFi instability, brownout/reset loop)**: a cluster
+  of instability appeared after the esp-radio 0.18.0 migration and the WiFi auto-reconnect
+  change. Addressed on several fronts:
+  - **DHT11 decoupled from the radio**: the bit-banged, timing-sensitive DHT11 read now runs
+    *before* the WiFi radio is powered on (`sensors::begin_read`), so radio interrupts can no
+    longer corrupt its microsecond edge timing. The ADC sensors still overlap WiFi via `join`
+    (`sensors::finish_read`). The DHT read also retries up to `DHT11_MAX_ATTEMPTS` (3) to
+    absorb transient glitches instead of dropping the reading on the first checksum failure.
+  - **WiFi reconnect backoff**: the connection task replaced its flat 1 s retry with
+    exponential backoff (`WIFI_RECONNECT_BACKOFF_START_MS` → `WIFI_RECONNECT_BACKOFF_MAX_MS`,
+    reset on successful association), so a flaky AP no longer drives a reconnect storm that
+    keeps the radio's TX current spikes busy.
+  - **Low-battery guard**: an early battery sample (taken pre-radio) is checked against
+    `LOW_BATTERY_CUTOFF_MV` (3300 mV); below it the cycle skips WiFi and the pump, shows the
+    readings, and sleeps — breaking the brownout/reset loop that drained a weak LiPo.
+  - **Reset-reason diagnostics**: the SoC reset reason is logged at boot and prepended to the
+    button-wake display, so a brownout/watchdog/panic reset (vs. a clean `CoreDeepSleep`) is
+    visible without a serial cable.
+
+### Fixed
 - **WiFi reconnect after link drop**: the connection task now uses `select` to race `WIFI_SIGNAL` against `wait_for_disconnect_async`. Previously, if the AP dropped the link after a successful association, the task was stuck waiting on the stop signal while `link_up` stayed false, causing a `WifiTimeout` error. Now it reconnects automatically within 1 s.
 
 ### Changed

@@ -9,6 +9,8 @@ use esp_radio::wifi::{ControllerConfig, Interface, WifiController, WifiError, st
 use log::{error, info};
 use static_cell::StaticCell;
 
+use crate::config::{WIFI_RECONNECT_BACKOFF_MAX_MS, WIFI_RECONNECT_BACKOFF_START_MS};
+
 /// Static cell for network stack resources
 static STACK_RESOURCES: StaticCell<StackResources<3>> = StaticCell::new();
 
@@ -86,16 +88,21 @@ async fn connection(controller: WifiController<'static>) {
 async fn connection_fallible(mut controller: WifiController<'static>) -> Result<(), WifiError> {
     info!("Start connection task");
 
+    // Exponential backoff so a flaky AP can't trigger a tight reconnect storm
+    // that keeps the radio (and its TX current spikes) busy on battery power.
+    // Reset to the start value after a successful association.
+    let mut backoff_ms = WIFI_RECONNECT_BACKOFF_START_MS;
+
     loop {
         if controller.is_connected() {
             controller.wait_for_disconnect_async().await.ok();
-            Timer::after(Duration::from_millis(5000)).await;
         }
 
         info!("About to connect to {}...", env!("WIFI_SSID"));
         match controller.connect_async().await {
             Ok(_) => {
                 info!("Connected to WiFi network");
+                backoff_ms = WIFI_RECONNECT_BACKOFF_START_MS;
                 // Race: stop signal vs link drop. Reconnect if the AP drops us
                 // rather than staying stuck with link_up=false until timeout.
                 match select(WIFI_SIGNAL.wait(), controller.wait_for_disconnect_async()).await {
@@ -105,14 +112,19 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
                         break;
                     }
                     Either::Second(_) => {
-                        info!("WiFi link dropped, reconnecting...");
-                        Timer::after(Duration::from_millis(1000)).await;
+                        info!("WiFi link dropped, reconnecting in {}ms...", backoff_ms);
+                        Timer::after(Duration::from_millis(backoff_ms)).await;
+                        backoff_ms = (backoff_ms * 2).min(WIFI_RECONNECT_BACKOFF_MAX_MS);
                     }
                 }
             }
             Err(error) => {
-                error!("Failed to connect to WiFi network: {:?}", error);
-                Timer::after(Duration::from_millis(5000)).await;
+                error!(
+                    "Failed to connect to WiFi network: {:?} (retry in {}ms)",
+                    error, backoff_ms
+                );
+                Timer::after(Duration::from_millis(backoff_ms)).await;
+                backoff_ms = (backoff_ms * 2).min(WIFI_RECONNECT_BACKOFF_MAX_MS);
             }
         }
     }

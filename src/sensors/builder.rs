@@ -1,41 +1,59 @@
 use dht_sensor::dht11::Reading;
 use embassy_time::{Delay, Duration, Timer};
 use heapless::Vec;
-use log::{error, info};
+use log::{error, info, warn};
 
 use crate::{
-    config::{DHT11_WARMUP_DELAY_MS, SENSOR_SAMPLE_COUNT},
+    config::{DHT11_MAX_ATTEMPTS, DHT11_WARMUP_DELAY_MS, SENSOR_SAMPLE_COUNT},
     domain::{MoistureLevel, Sensor, SensorData, overflow_detected},
 };
 
 use super::adc::{calculate_average, read_battery_voltage, read_powered_adc_sensor};
 use super::hardware::SensorHardware;
 
-/// Read a single DHT11 measurement after the required warmup delay.
-async fn read_dht11_sensor(dht11_pin: &mut esp_hal::gpio::Flex<'static>) -> Option<Reading> {
-    let dht11_sensor = dht_sensor::dht11::blocking::read(&mut Delay, dht11_pin).ok();
-    Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MS)).await;
-    dht11_sensor
+/// Read the DHT11, retrying on the frequent timing-induced checksum failures.
+///
+/// The DHT11 read is a blocking, bit-banged transfer whose correctness depends
+/// on microsecond edge timing. It is read *before* the WiFi radio starts so its
+/// timing is not corrupted by radio interrupts; retries here absorb the
+/// remaining transient glitches. Each attempt is preceded by the warmup/settle
+/// delay (the sensor cannot be sampled faster than ~1 Hz).
+pub(super) async fn read_dht11_with_retries(
+    dht11_pin: &mut esp_hal::gpio::Flex<'static>,
+) -> Option<Reading> {
+    for attempt in 1..=DHT11_MAX_ATTEMPTS {
+        Timer::after(Duration::from_millis(DHT11_WARMUP_DELAY_MS)).await;
+        match dht_sensor::dht11::blocking::read(&mut Delay, dht11_pin) {
+            Ok(reading) => return Some(reading),
+            Err(error) => warn!(
+                "DHT11 read attempt {}/{} failed: {:?}",
+                attempt, DHT11_MAX_ATTEMPTS, error
+            ),
+        }
+    }
+    error!("DHT11 read failed after {} attempts", DHT11_MAX_ATTEMPTS);
+    None
 }
 
-/// Collect SENSOR_SAMPLE_COUNT readings from every sensor and build the averaged SensorData.
-pub(super) async fn collect_all_sensor_data(hardware: &mut SensorHardware<'static>) -> SensorData {
+/// Collect the ADC sensors (moisture, water level, battery) and assemble the
+/// averaged SensorData, folding in the already-taken DHT11 reading.
+pub(super) async fn collect_adc_sensor_data(
+    hardware: &mut SensorHardware<'static>,
+    dht11_reading: Option<Reading>,
+) -> SensorData {
     let mut air_humidity_samples: Vec<u8, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut air_temperature_samples: Vec<i8, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut soil_moisture_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut battery_voltage_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
     let mut water_level_samples: Vec<u16, SENSOR_SAMPLE_COUNT> = Vec::new();
 
-    // DHT11 is read once per wake cycle: it needs a 2s warmup after power-on and
-    // cannot be sampled faster than ~1Hz anyway. Filling all sample slots from one
-    // reading keeps the averaging logic intact without burning 2s × N of idle time.
-    if let Some(measurement) = read_dht11_sensor(&mut hardware.dht11_pin).await {
+    // DHT11 was read once (pre-radio) for this cycle. Filling all sample slots
+    // from that one reading keeps the averaging logic intact.
+    if let Some(measurement) = dht11_reading {
         for _ in 0..SENSOR_SAMPLE_COUNT {
             let _ = air_temperature_samples.push(measurement.temperature);
             let _ = air_humidity_samples.push(measurement.relative_humidity);
         }
-    } else {
-        error!("DHT11 read failed");
     }
 
     for i in 0..SENSOR_SAMPLE_COUNT {

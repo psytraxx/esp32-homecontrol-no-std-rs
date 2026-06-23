@@ -7,7 +7,10 @@
 )]
 
 use alloc::format;
-use config::{AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS, WIFI_CONNECT_TIMEOUT_SECONDS};
+use config::{
+    AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS, LOW_BATTERY_CUTOFF_MV,
+    WIFI_CONNECT_TIMEOUT_SECONDS,
+};
 use display::{Display, DisplayPeripherals, DisplayTrait};
 use domain::Sensor;
 use embassy_executor::Spawner;
@@ -22,17 +25,17 @@ use esp_hal::{
     peripherals::WIFI,
     ram,
     rng::Rng,
-    rtc_cntl::wakeup_cause,
-    system::SleepSource,
+    rtc_cntl::{SocResetReason, wakeup_cause},
+    system::{SleepSource, reset_reason},
     timer::timg::TimerGroup,
 };
 use esp_println::logger::init_logger;
 use esp_radio::wifi::WifiError;
 use esp_rtos::main;
-use log::{error, info};
+use log::{error, info, warn};
 use pump::run_pump;
 use rtc_memory::RtcCell;
-use sensors::{SensorPeripherals, read_sensors};
+use sensors::SensorPeripherals;
 use sleep::enter_deep;
 use wifi::{WIFI_SIGNAL, connect_to_wifi};
 
@@ -67,6 +70,13 @@ esp_bootloader_esp_idf::esp_app_desc!();
 #[main]
 async fn main(spawner: Spawner) {
     init_logger(log::LevelFilter::Info);
+
+    // Why the last reset happened. A SysBrownOut / watchdog / CoreSw reason
+    // (rather than CoreDeepSleep) means a previous cycle crashed instead of
+    // sleeping cleanly — the key signal for diagnosing the brownout/reset loop
+    // without a serial cable (also surfaced on the display on button wake).
+    let reset_reason = reset_reason();
+    info!("Reset reason: {:?}", reset_reason);
 
     let boot_count = BOOT_COUNT.get();
     info!("Current boot count = {}", boot_count);
@@ -128,6 +138,7 @@ async fn main(spawner: Spawner) {
         sensor_peripherals,
         &mut pump_pin,
         boot_count,
+        reset_reason,
     )
     .await
     {
@@ -158,21 +169,48 @@ async fn run_cycle(
     sensor_peripherals: SensorPeripherals,
     pump_pin: &mut Output<'static>,
     boot_count: u32,
+    reset_reason: Option<SocResetReason>,
 ) -> Result<(), Error> {
     // Everything in the cycle works against one deadline: whatever time WiFi,
     // sensors and publishing don't use remains as the MQTT command window.
     let deadline = Instant::now() + Duration::from_secs(AWAKE_DURATION_SECONDS);
 
+    let button_wake = matches!(wakeup_cause(), SleepSource::Ext0);
+
+    // Pre-radio phase: read the timing-sensitive DHT11 and an early battery
+    // sample *before* the WiFi radio is powered on, so radio interrupts can't
+    // corrupt the bit-banged DHT11 read and we know the battery state before
+    // committing to WiFi/pump current draw.
+    let readout = sensors::begin_read(sensor_peripherals).await;
+
+    // Low-battery guard: a weak LiPo browns out under radio/pump current spikes,
+    // causing a reset loop that drains it further. Skip WiFi and pump, show the
+    // readings, and sleep.
+    if let Some(battery_mv) = readout.battery_mv
+        && battery_mv < LOW_BATTERY_CUTOFF_MV
+    {
+        warn!(
+            "Battery {}mV below cutoff {}mV — skipping WiFi/pump this cycle",
+            battery_mv, LOW_BATTERY_CUTOFF_MV
+        );
+        let sensor_data = sensors::finish_read(readout).await;
+        let mut display = Display::new(display_peripherals, Delay, button_wake)?;
+        display.write_multiline(&format!("LOW BATTERY {battery_mv}mV\n{sensor_data}"))?;
+        display.enable_powersave()?;
+        return Ok(());
+    }
+
     let rng = Rng::new();
     let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
-    // Overlap the slow WiFi/DHCP handshake with the DHT11 warmup and ADC sampling.
+    // Overlap the slow WiFi/DHCP handshake with the ADC sampling (moisture,
+    // water level, battery) — these are not timing-sensitive to radio activity.
     let (stack, sensor_data) = join(
         with_timeout(
             Duration::from_secs(WIFI_CONNECT_TIMEOUT_SECONDS),
             connect_to_wifi(wifi, seed, spawner),
         ),
-        read_sensors(sensor_peripherals),
+        sensors::finish_read(readout),
     )
     .await;
     let stack = stack.map_err(|_| Error::WifiTimeout)??;
@@ -184,15 +222,14 @@ async fn run_cycle(
         .iter()
         .any(|e| matches!(e, Sensor::OverflowDetected(true)));
 
-    let button_wake = matches!(wakeup_cause(), SleepSource::Ext0);
     let mut display = Display::new(display_peripherals, Delay, button_wake)?;
 
     let mut status = format!("{sensor_data}");
     if button_wake {
         if let Some(stack_config) = stack.config_v4() {
             status = format!(
-                "Client IP: {}\nBoot count: {}\n{}",
-                stack_config.address, boot_count, status
+                "Reset: {:?}\nClient IP: {}\nBoot count: {}\n{}",
+                reset_reason, stack_config.address, boot_count, status
             );
         } else {
             error!("Failed to get stack config");

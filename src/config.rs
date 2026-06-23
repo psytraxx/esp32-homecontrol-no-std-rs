@@ -10,6 +10,22 @@ pub const DEEP_SLEEP_DURATION_SECONDS: u64 = 3600 - AWAKE_DURATION_SECONDS;
 /// Give up on WiFi after this long and go back to sleep instead of waiting forever
 pub const WIFI_CONNECT_TIMEOUT_SECONDS: u64 = 30;
 
+/// WiFi reconnect backoff bounds. After a link drop or failed association the
+/// connection task waits this long before retrying, doubling up to the cap.
+/// Prevents a flaky AP from triggering a ~1s reconnect storm that keeps the
+/// radio (and its TX current spikes) busy — important on battery power.
+pub const WIFI_RECONNECT_BACKOFF_START_MS: u64 = 1000;
+pub const WIFI_RECONNECT_BACKOFF_MAX_MS: u64 = 30_000;
+
+/// Battery voltage below this (mV) means the cell is too weak to safely power
+/// the WiFi radio and pump. The cycle skips WiFi/pump and sleeps to avoid a
+/// brownout/reset loop that would drain the battery further.
+pub const LOW_BATTERY_CUTOFF_MV: u16 = 3300;
+
+/// How many times to retry the (timing-sensitive, bit-banged) DHT11 read before
+/// giving up for this cycle.
+pub const DHT11_MAX_ATTEMPTS: usize = 3;
+
 /// Set to false to suppress all MQTT publishing (useful during development on USB power).
 pub const MQTT_PUBLISH_ENABLED: bool = true;
 
