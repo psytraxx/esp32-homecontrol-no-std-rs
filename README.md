@@ -13,7 +13,7 @@ Built for [LilyGO T-Display-S3](https://github.com/Xinyuan-LilyGO/T-Display-S3) 
 - USB-C connector
 - Built-in battery management
 
-## Wiring — V1 (Current Hardware)
+## Wiring
 
 ```mermaid
 graph TD
@@ -59,66 +59,6 @@ graph TD
     G38 --> BL
     GDISP -->|8-bit parallel| LCD
 ```
-
-## Wiring — V2 (Planned Hardware)
-
-> See [HARDWARE_V2.md](HARDWARE_V2.md) for full BOM, crate list, and migration notes.
-
-```mermaid
-graph TD
-    subgraph MCU [ESP32-S3 LilyGO T-Display-S3]
-        SDA[GPIO3 I2C SDA]
-        SCL[GPIO10 I2C SCL]
-        G2[GPIO2]
-        G12[GPIO12 ADC]
-        G14[GPIO14]
-        G15[GPIO15]
-        G21[GPIO21]
-        G38[GPIO38]
-        GDISP[GPIO 6-9 and 39-48]
-    end
-
-    subgraph I2C [I2C Bus - shared SDA and SCL]
-        AHT[AHT20 plus BMP280 addr 0x38 and 0x76 - Temp Humidity Pressure]
-        SOIL[STEMMA Soil Sensor addr 0x37 - Moisture and Soil Temp]
-        INA[INA219 addr 0x40 - Voltage Current Power]
-    end
-
-    subgraph PERIPH [Other Peripherals unchanged]
-        RELAY[Pump Relay]
-        WATER[Water Level Overflow Sensor]
-        WPWR[Water Level Power]
-        BTN[Wake Button]
-        DPWR[Display Power]
-        BL[Display Backlight]
-        LCD[ST7789 LCD]
-    end
-
-    LIPO[LiPo Battery] -->|VIN plus in series| INA
-    INA -->|VIN minus to rail| PWR[3.3V Rail]
-
-    SDA --> AHT
-    SDA --> SOIL
-    SDA --> INA
-    SCL --> AHT
-    SCL --> SOIL
-    SCL --> INA
-
-    G2  --> RELAY
-    G12 -->|ADC 11dB| WATER
-    G21 --> WPWR
-    WPWR -->|power toggle| WATER
-    G14 -->|wake source| BTN
-    G15 --> DPWR
-    G38 --> BL
-    GDISP -->|8-bit parallel| LCD
-```
-
-**Key V2 changes:**
-- DHT11 GPIO1 replaced by AHT20+BMP280 over I2C: accuracy improves from +/-2C to +/-0.3C, float precision, adds pressure
-- Capacitive ADC GPIO11/16 replaced by STEMMA Soil over I2C: stable counts, soil temp, no exposed metal oxidation
-- Battery ADC divider GPIO4 replaced by INA219 over I2C: adds current and power measurement, noise drops from +/-60mV to +/-4mV
-- Water level sensor unchanged — intentional binary overflow detection only
 
 ## Core Features
 

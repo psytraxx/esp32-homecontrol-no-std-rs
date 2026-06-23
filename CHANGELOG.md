@@ -59,8 +59,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ### Added
 - `overflow_detected(adc_mv: u16) -> bool` in `domain.rs` — converts raw ADC reading to overflow state; threshold is 2800 mV (private, measured: ~2217 mV dry, ~3475 mV submerged). Replaces old `WaterLevel` enum and `From<u16>` conversion.
 - `WIFI_CONNECT_TIMEOUT_SECONDS` (30 s) in `config.rs` — bounds the WiFi connection attempt so the device sleeps instead of waiting forever.
-- `HARDWARE_V2.md` — sensor upgrade plan with confirmed BOM: AHT20+BMP280 combo, Adafruit STEMMA soil sensor, INA219 power monitor; all I2C, STEMMA QT connectors; Rust crate analysis, wiring diagram, firmware checklist.
-- Mermaid wiring diagrams for V1 (current) and V2 (planned) hardware added to `README.md`.
+- Mermaid wiring diagram added to `README.md`.
 - `src/sensors/` module replacing `sensors_task.rs`: `hardware.rs` (peripheral init), `adc.rs` (unified `read_powered_adc_sensor`), `builder.rs` (data assembly), `mod.rs` (one-shot `read_sensors()`).
 - Sensor sampling constants (`USB_CHARGING_VOLTAGE_MV`, `DHT11_WARMUP_DELAY_MS`, `SENSOR_WARMUP_DELAY_MS`, `SENSOR_SAMPLE_COUNT`) moved to `config.rs`.
 - MQTT discovery payload includes `force_update: true` for numeric sensors — prevents HA recorder from deduplicating unchanged values.
