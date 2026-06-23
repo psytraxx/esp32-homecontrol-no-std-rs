@@ -1,10 +1,11 @@
 use embassy_executor::Spawner;
+use embassy_futures::select::{Either, select};
 use embassy_net::{Config, DhcpConfig, Runner, Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals;
-use esp_radio::wifi::{ControllerConfig, Interface, WifiController, WifiError, sta::StationConfig};
 use esp_radio::wifi::Config as WifiConfig;
+use esp_radio::wifi::{ControllerConfig, Interface, WifiController, WifiError, sta::StationConfig};
 use log::{error, info};
 use static_cell::StaticCell;
 
@@ -95,11 +96,19 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
         match controller.connect_async().await {
             Ok(_) => {
                 info!("Connected to WiFi network");
-                info!("Wait for request to stop wifi");
-                WIFI_SIGNAL.wait().await;
-                info!("Received signal to stop wifi");
-                controller.disconnect_async().await.ok();
-                break;
+                // Race: stop signal vs link drop. Reconnect if the AP drops us
+                // rather than staying stuck with link_up=false until timeout.
+                match select(WIFI_SIGNAL.wait(), controller.wait_for_disconnect_async()).await {
+                    Either::First(_) => {
+                        info!("Received signal to stop wifi");
+                        controller.disconnect_async().await.ok();
+                        break;
+                    }
+                    Either::Second(_) => {
+                        info!("WiFi link dropped, reconnecting...");
+                        Timer::after(Duration::from_millis(1000)).await;
+                    }
+                }
             }
             Err(error) => {
                 error!("Failed to connect to WiFi network: {:?}", error);

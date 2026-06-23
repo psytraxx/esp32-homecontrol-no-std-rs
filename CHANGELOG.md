@@ -7,6 +7,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **WiFi reconnect after link drop**: the connection task now uses `select` to race `WIFI_SIGNAL` against `wait_for_disconnect_async`. Previously, if the AP dropped the link after a successful association, the task was stuck waiting on the stop signal while `link_up` stayed false, causing a `WifiTimeout` error. Now it reconnects automatically within 1 s.
+
+### Changed
+- **esp-radio 0.18.0 migration**: `Interface::station()` + `WifiController::new()` replaced with `esp_radio::wifi::new(peripheral, config)` which returns `(WifiController, Interfaces)`. Station interface is now accessed via `interfaces.station` field.
+
 ### Changed
 - **Architecture: the wake cycle is now one linear async flow** (`main.rs::run_cycle`). The device is a batch job (wake → work → sleep ~1 h), so the task/channel/signal structure was replaced with sequential steps: `join(connect_to_wifi, read_sensors)` → display → `mqtt::connect` → publish → subscribe → poll for pump commands until the awake deadline. Embassy is still used where there is real concurrency: the WiFi tasks, `join` to overlap DHCP with the DHT11 warmup, and `with_deadline`/`with_timeout` for the command window and WiFi bound.
   - `update_task.rs` → `mqtt.rs`: plain async functions (`connect`, `publish`, `subscribe_to_pump_commands`, `wait_for_pump_command`); no task, no display access, no reconnect loop — on broker failure the device just sleeps and retries next wake.
