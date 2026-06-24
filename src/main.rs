@@ -97,7 +97,7 @@ async fn main(spawner: Spawner) {
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
     power_pin.set_high();
 
-    let mut pump_pin = Output::new(peripherals.GPIO2, Level::Low, OutputConfig::default());
+    let mut pump_pin = Output::new(peripherals.GPIO13, Level::Low, OutputConfig::default());
 
     let display_peripherals = DisplayPeripherals {
         backlight: peripherals.GPIO38.degrade(),
@@ -120,12 +120,11 @@ async fn main(spawner: Spawner) {
     let sensor_peripherals = SensorPeripherals {
         dht11_digital_pin: peripherals.GPIO1,
         battery_pin: peripherals.GPIO4,
-        moisture_analog_pin: peripherals.GPIO11,
+        moisture_analog_pin: peripherals.GPIO2,
         moisture_power_pin: peripherals.GPIO16,
-        water_level_analog_pin: peripherals.GPIO12,
+        water_level_analog_pin: peripherals.GPIO3,
         water_level_power_pin: peripherals.GPIO21,
         adc1: peripherals.ADC1,
-        adc2: peripherals.ADC2,
     };
 
     // The wake cycle is fallible, but the device always goes back to sleep:

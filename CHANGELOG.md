@@ -7,6 +7,9 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Changed
+- **GPIO re-pin: pump relay GPIO2→GPIO13, moisture ADC GPIO11→GPIO2, water level ADC GPIO12→GPIO3**: all three sensor ADC pins moved from ADC2 to ADC1, eliminating the second ADC peripheral. `SensorPeripherals` and `SensorHardware` no longer carry `adc2`; `builder.rs` reads both sensors through `adc1`. Pump relay moved to GPIO13 to free GPIO2 for the moisture ADC.
+
 ### Fixed
 - **Wake-cycle stability (DHT11 failures, WiFi instability, brownout/reset loop)**: a cluster
   of instability appeared after the esp-radio 0.18.0 migration and the WiFi auto-reconnect

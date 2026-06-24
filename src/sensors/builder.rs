@@ -65,7 +65,7 @@ pub(super) async fn collect_adc_sensor_data(
 
         // Read soil moisture (powered ADC sensor)
         if let Some(moisture) = read_powered_adc_sensor(
-            &mut hardware.adc2,
+            &mut hardware.adc1,
             &mut hardware.moisture_pin,
             &mut hardware.moisture_power_pin,
         )
@@ -77,7 +77,7 @@ pub(super) async fn collect_adc_sensor_data(
 
         // Read water level (powered ADC sensor)
         if let Some(water_level) = read_powered_adc_sensor(
-            &mut hardware.adc2,
+            &mut hardware.adc1,
             &mut hardware.waterlevel_pin,
             &mut hardware.water_level_power_pin,
         )

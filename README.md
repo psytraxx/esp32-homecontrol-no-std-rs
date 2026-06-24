@@ -20,9 +20,9 @@ graph TD
     subgraph MCU [ESP32-S3 LilyGO T-Display-S3]
         G1[GPIO1]
         G2[GPIO2]
+        G3[GPIO3]
         G4[GPIO4]
-        G11[GPIO11]
-        G12[GPIO12]
+        G13[GPIO13]
         G14[GPIO14]
         G15[GPIO15]
         G16[GPIO16]
@@ -46,12 +46,12 @@ graph TD
     end
 
     G1  -->|1-wire bit-bang| DHT
-    G2  -->|digital out| RELAY
-    G4  -->|ADC x2 divider| BATT
-    G11 -->|ADC 11dB| MOIST
+    G13 -->|digital out| RELAY
+    G4  -->|ADC1 x2 divider| BATT
+    G2  -->|ADC1 11dB| MOIST
     G16 --> MPWR
     MPWR -->|power toggle| MOIST
-    G12 -->|ADC 11dB| WATER
+    G3  -->|ADC1 11dB| WATER
     G21 --> WPWR
     WPWR -->|power toggle| WATER
     G14 -->|wake source| BTN
