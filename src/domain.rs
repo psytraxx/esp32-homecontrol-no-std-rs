@@ -16,7 +16,7 @@ const MOISTURE_DRY_THRESHOLD: f32 = 0.15;
 /// Struct to hold sensor data
 #[derive(Default, Debug)]
 pub struct SensorData {
-    pub data: Vec<Sensor, 6>,
+    pub data: Vec<Sensor, 7>,
 }
 
 impl Display for SensorData {
@@ -70,6 +70,7 @@ pub enum Sensor {
     SoilMoisture(MoistureLevel), // Soil moisture (qualitative)
     BatteryVoltage(u16),         // Battery voltage in mV
     SoilMoistureRaw(SoilMoistureRawLevel), // Raw soil moisture sensor value
+    BootCount(u32), // Wake cycles since first boot (survives deep sleep via RTC memory)
 }
 
 #[derive(Debug, Default)]
@@ -120,6 +121,7 @@ impl Sensor {
             Sensor::OverflowDetected(_) => "overflow",
             Sensor::BatteryVoltage(_) => "batteryvoltage",
             Sensor::SoilMoistureRaw(_) => "moistureraw",
+            Sensor::BootCount(_) => "bootcount",
         }
     }
 
@@ -132,6 +134,7 @@ impl Sensor {
             Sensor::OverflowDetected(_) => "Overflow detected",
             Sensor::BatteryVoltage(_) => "Battery voltage",
             Sensor::SoilMoistureRaw(_) => "Soil moisture (mV)",
+            Sensor::BootCount(_) => "Boot count",
         }
     }
 
@@ -144,6 +147,7 @@ impl Sensor {
             Sensor::OverflowDetected(v) => if *v { "YES" } else { "NO" }.to_string(),
             Sensor::BatteryVoltage(v) => v.to_string(),
             Sensor::SoilMoistureRaw(v) => v.to_string(),
+            Sensor::BootCount(v) => v.to_string(),
         }
     }
 }

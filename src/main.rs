@@ -16,7 +16,7 @@ use domain::Sensor;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
 use embassy_net::Stack;
-use embassy_time::{Delay, Duration, Instant, Timer, with_timeout};
+use embassy_time::{Delay, Duration, Instant, Timer, with_deadline, with_timeout};
 use esp_alloc::{heap_allocator, psram_allocator};
 use esp_backtrace as _;
 use esp_hal::{
@@ -24,7 +24,6 @@ use esp_hal::{
     clock::CpuClock,
     gpio::{Level, Output, OutputConfig, Pin},
     peripherals::WIFI,
-    ram,
     rng::Rng,
     rtc_cntl::{SocResetReason, wakeup_cause},
     system::{SleepSource, reset_reason},
@@ -35,7 +34,7 @@ use esp_radio::wifi::WifiError;
 use esp_rtos::main;
 use log::{error, info, warn};
 use pump::run_pump;
-use rtc_memory::RtcCell;
+use rtc_memory::{boot_count as read_boot_count, set_boot_count};
 use sensors::SensorPeripherals;
 use sleep::enter_deep;
 use wifi::{WIFI_SIGNAL, connect_to_wifi};
@@ -52,20 +51,6 @@ mod sensors;
 mod sleep;
 mod wifi;
 
-/// Stored boot count between deep sleep cycles
-///
-/// This is a statically allocated variable and it is placed in the RTC Fast
-/// memory, which survives deep sleep. Uses RtcCell for safe interior mutability.
-#[ram(unstable(rtc_fast))]
-pub(crate) static BOOT_COUNT: RtcCell<u32> = RtcCell::new(0);
-
-/// Tracks whether MQTT discovery messages have been sent
-///
-/// Placed in RTC Fast memory to prevent re-sending on every wake.
-/// Uses RtcCell for safe interior mutability.
-#[ram(unstable(rtc_fast))]
-pub(crate) static DISCOVERY_MESSAGES_SENT: RtcCell<bool> = RtcCell::new(false);
-
 esp_bootloader_esp_idf::esp_app_desc!();
 
 #[main]
@@ -79,9 +64,9 @@ async fn main(spawner: Spawner) {
     let reset_reason = reset_reason();
     info!("Reset reason: {:?}", reset_reason);
 
-    let boot_count = BOOT_COUNT.get();
+    let boot_count = read_boot_count();
     info!("Current boot count = {}", boot_count);
-    BOOT_COUNT.set(boot_count + 1);
+    set_boot_count(boot_count + 1);
 
     let peripherals = esp_hal::init(Config::default().with_cpu_clock(CpuClock::_80MHz));
 
@@ -209,7 +194,7 @@ async fn run_cycle(
 
     // Overlap the slow WiFi/DHCP handshake with the ADC sampling (moisture,
     // water level, battery) — these are not timing-sensitive to radio activity.
-    let (stack, sensor_data) = join(
+    let (stack, mut sensor_data) = join(
         with_timeout(
             Duration::from_secs(WIFI_CONNECT_TIMEOUT_SECONDS),
             connect_to_wifi(wifi, seed, spawner),
@@ -219,12 +204,33 @@ async fn run_cycle(
     .await;
     let stack = stack.map_err(|_| Error::WifiTimeout)??;
 
+    // Boot count is published every cycle so a gap in HA (timer wake fired but
+    // publish failed vs. timer never fired) is distinguishable remotely.
+    if sensor_data
+        .data
+        .push(Sensor::BootCount(boot_count))
+        .is_err()
+    {
+        error!("Failed to push BootCount to sensor_data");
+    }
+
     // Overflow state is established before MQTT ever connects, so a retained
-    // ON command can never race the interlock.
-    let pump_allowed = !sensor_data
+    // ON command can never race the interlock. Fail closed: a confirmed dry
+    // reading is required to allow the pump, so a failed/missing water-level
+    // sample (sensor fault, ADC read failure) blocks the pump instead of
+    // silently allowing it.
+    let pump_allowed = sensor_data
         .data
         .iter()
-        .any(|e| matches!(e, Sensor::OverflowDetected(true)));
+        .any(|e| matches!(e, Sensor::OverflowDetected(false)));
+    if !pump_allowed
+        && !sensor_data
+            .data
+            .iter()
+            .any(|e| matches!(e, Sensor::OverflowDetected(_)))
+    {
+        warn!("No overflow reading this cycle — pump blocked as a precaution");
+    }
 
     // Only build the display on an attended wake — nobody is watching a
     // timer wake, so skip the backlight/panel current draw entirely for it.
@@ -245,7 +251,22 @@ async fn run_cycle(
         None
     };
 
-    let result = run_mqtt_session(stack, &sensor_data, pump_allowed, deadline, pump_pin).await;
+    // mqtt::connect (DNS, TCP connect, broker handshake) has no internal
+    // timeout, so a stalled broker/network could otherwise keep the radio on
+    // past the awake window indefinitely. Bound the whole session by the same
+    // deadline the pump command loop already uses.
+    let result = match with_deadline(
+        deadline,
+        run_mqtt_session(stack, &sensor_data, pump_allowed, deadline, pump_pin),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            error!("MQTT session exceeded awake deadline");
+            Err(Error::MqttDeadline)
+        }
+    };
 
     if let Some(display) = &mut display {
         display.enable_powersave()?;
@@ -292,6 +313,7 @@ enum Error {
     WifiTimeout,
     Display(display::Error),
     Mqtt(mqtt::Error),
+    MqttDeadline,
 }
 
 impl core::fmt::Display for Error {
@@ -301,6 +323,7 @@ impl core::fmt::Display for Error {
             Error::WifiTimeout => write!(f, "Wifi connection timed out"),
             Error::Display(error) => write!(f, "Display error: {error}"),
             Error::Mqtt(error) => write!(f, "MQTT error: {error}"),
+            Error::MqttDeadline => write!(f, "MQTT session exceeded awake deadline"),
         }
     }
 }

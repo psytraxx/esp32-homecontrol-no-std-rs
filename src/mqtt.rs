@@ -28,12 +28,12 @@ use static_cell::StaticCell;
 use strum::IntoEnumIterator;
 
 use crate::{
-    DISCOVERY_MESSAGES_SENT,
     config::{
         DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_TOPIC,
         HOMEASSISTANT_SWITCH_TOPIC, MQTT_PUBLISH_ENABLED,
     },
     domain::{Sensor, SensorData},
+    rtc_memory::{discovery_messages_sent, set_discovery_messages_sent},
 };
 
 const BUFFER_SIZE: usize = 4096;
@@ -200,7 +200,7 @@ impl MqttSession<'_> {
     }
 
     async fn publish_discovery_topics(&mut self) -> Result<(), Error> {
-        if !DISCOVERY_MESSAGES_SENT.get() {
+        if !discovery_messages_sent() {
             info!("First run, sending discovery messages");
 
             for s in Sensor::iter() {
@@ -214,7 +214,7 @@ impl MqttSession<'_> {
             self.publish_str(&discovery_topic, message.as_bytes(), true)
                 .await?;
 
-            DISCOVERY_MESSAGES_SENT.set(true);
+            set_discovery_messages_sent(true);
         } else {
             info!("Discovery messages already sent");
         }
@@ -305,9 +305,14 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
         payload["unit_of_measurement"] = json!(unit);
         // only set state_class if unit is present - enables Home Assistant to display the unit correctly and keep track of state changes
         payload["state_class"] = json!("measurement");
-        // force HA to record every incoming value even if unchanged (prevents recorder deduplication)
-        payload["force_update"] = json!(true);
     }
+
+    // Force HA to record every incoming value even when unchanged, so a frozen
+    // `last_updated` reliably means "device stopped reporting" rather than
+    // "value happened to be constant". Applies to unitless sensors too
+    // (overflow, qualitative moisture, boot count) — otherwise a constantly-NO
+    // overflow reading looks indistinguishable from a dead device.
+    payload["force_update"] = json!(true);
 
     let discovery_topic = format!(
         "{HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX}/{HOMEASSISTANT_SENSOR_TOPIC}/{DEVICE_ID}_{topic}/config"

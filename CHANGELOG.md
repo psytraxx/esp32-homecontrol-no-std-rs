@@ -8,12 +8,53 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **RTC memory was reset on every wake (`BOOT_COUNT`/`DISCOVERY_MESSAGES_SENT` never persisted)**:
+  both statics used `#[ram(unstable(rtc_fast))]` *without* the `persistent` option. Plain
+  `rtc_fast` places the value in RTC fast RAM but re-applies its initializer on every reset,
+  including deep-sleep wake — so `BOOT_COUNT` read back `0` and `DISCOVERY_MESSAGES_SENT` read
+  back `false` on each cycle (confirmed remotely: the published boot count stayed at `0` across
+  deep-sleep wakes). Both now use `#[ram(unstable(rtc_fast, persistent))]`, which zeroes the
+  memory once on first boot and then preserves it across resets. `persistent` requires a type
+  with no invalid bit patterns (`esp_hal::Persistable`), which `bool` does not implement, so the
+  discovery flag is stored as `u32` (0/1). The `RtcCell` wrapper — incompatible with `persistent`
+  because `UnsafeCell` isn't `Persistable` — was removed in favor of plain `static mut` accessed
+  through safe helpers in `rtc_memory.rs` (sound because Embassy is single-core cooperative and
+  deep sleep halts execution, so access is strictly sequential).
+- **Pump interlock was fail-open**: `pump_allowed` was computed as "no `OverflowDetected(true)`
+  reading present", so a cycle where the water-level average failed (sensor fault, ADC error)
+  and the overflow sensor was never pushed into `SensorData` would silently allow the pump to
+  run. The interlock now requires an explicit `OverflowDetected(false)` reading to allow the
+  pump — a missing overflow reading blocks the pump instead of defaulting to allow, and logs a
+  warning.
+- **MQTT session had no upper bound on awake time**: `mqtt::connect` (DNS query, TCP connect,
+  broker handshake) and the initial `publish`/`subscribe` calls had no timeout of their own —
+  only the pump-command poll loop respected the awake deadline. A stalled broker or blackholed
+  connection could keep the radio on indefinitely instead of the device going back to sleep and
+  retrying next hour. The whole MQTT session is now wrapped in `with_deadline` against the same
+  cycle deadline used for the command window.
+- **Water-level ADC pin had no calibration curve**: only the moisture and battery pins used
+  `enable_pin_with_cal`; the water-level pin used a plain `enable_pin`, giving it raw
+  (uncalibrated) ADC counts on the same channel type as the other two, now-calibrated pins.
+  Added `AdcCalCurve` calibration to match.
 - **ADC attenuation bug**: moisture and water-level pins were enabled on a separate `AdcConfig`
   that was never passed to `Adc::new` — only the config passed to `Adc::new` has its
   attenuations programmed into hardware, so both channels were silently read without the
   intended 11 dB attenuation. All three ADC1 pins (moisture, water level, battery) now share
   one config. **Existing `OVERFLOW_THRESHOLD`/`MOISTURE_MIN`/`MOISTURE_MAX` values in
   `domain.rs` were calibrated against the buggy readings and need to be re-checked on hardware.**
+- **Unitless sensors were deduplicated by HA's recorder**: `force_update: true` was only set in
+  the discovery config when a sensor had a unit, so the unitless sensors (overflow, qualitative
+  soil moisture, boot count) had their `last_updated` frozen by Home Assistant whenever the
+  value was unchanged. A constantly-`NO` overflow reading then looked identical to a dead device.
+  `force_update` is now set for every sensor, so a frozen timestamp reliably means the device
+  stopped reporting.
+
+### Added
+- **`BootCount` MQTT sensor**: boot count (previously shown only on the display on attended
+  wakes) is now published as a regular sensor every cycle, timer wakes included. Lets a gap in
+  Home Assistant's history be diagnosed remotely — a boot count that jumps by more than one per
+  missing hour means the device woke and failed before publishing (WiFi/MQTT); a contiguous
+  count across a long gap means the timer wake itself didn't fire.
 - **DNS query panic**: an empty DNS response for the MQTT broker hostname would panic on `a[0]`
   indexing instead of returning an error; now returns `Error::DnsNoRecords`.
 - **Backlight left on during unattended wakes**: `Display::new` claimed to skip panel/backlight
