@@ -51,20 +51,12 @@ pub async fn connect_to_wifi(
     spawner.spawn(net_task(runner).expect("Unable to start net task"));
 
     info!("Wait for network link");
-    loop {
-        if stack.is_link_up() {
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
-    }
+    stack.wait_link_up().await;
 
     info!("Wait for IP address");
-    loop {
-        if let Some(config) = stack.config_v4() {
-            info!("Connected to WiFi with IP address {}", config.address);
-            break;
-        }
-        Timer::after(Duration::from_millis(500)).await;
+    stack.wait_config_up().await;
+    if let Some(config) = stack.config_v4() {
+        info!("Connected to WiFi with IP address {}", config.address);
     }
 
     Ok(stack)
@@ -94,6 +86,15 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
     let mut backoff_ms = WIFI_RECONNECT_BACKOFF_START_MS;
 
     loop {
+        // A stop request can arrive at any point in this loop (mid-backoff,
+        // mid-connect) — check the latched signal first so it's never missed
+        // and the radio doesn't stay powered until deep sleep cuts it.
+        if WIFI_SIGNAL.signaled() {
+            info!("Received signal to stop wifi");
+            controller.disconnect_async().await.ok();
+            break;
+        }
+
         if controller.is_connected() {
             controller.wait_for_disconnect_async().await.ok();
         }
@@ -113,7 +114,15 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
                     }
                     Either::Second(_) => {
                         info!("WiFi link dropped, reconnecting in {}ms...", backoff_ms);
-                        Timer::after(Duration::from_millis(backoff_ms)).await;
+                        if let Either::First(_) = select(
+                            WIFI_SIGNAL.wait(),
+                            Timer::after(Duration::from_millis(backoff_ms)),
+                        )
+                        .await
+                        {
+                            info!("Received signal to stop wifi");
+                            break;
+                        }
                         backoff_ms = (backoff_ms * 2).min(WIFI_RECONNECT_BACKOFF_MAX_MS);
                     }
                 }
@@ -123,7 +132,15 @@ async fn connection_fallible(mut controller: WifiController<'static>) -> Result<
                     "Failed to connect to WiFi network: {:?} (retry in {}ms)",
                     error, backoff_ms
                 );
-                Timer::after(Duration::from_millis(backoff_ms)).await;
+                if let Either::First(_) = select(
+                    WIFI_SIGNAL.wait(),
+                    Timer::after(Duration::from_millis(backoff_ms)),
+                )
+                .await
+                {
+                    info!("Received signal to stop wifi");
+                    break;
+                }
                 backoff_ms = (backoff_ms * 2).min(WIFI_RECONNECT_BACKOFF_MAX_MS);
             }
         }

@@ -53,7 +53,6 @@ rust-mqtt = { version = "0.5.1", default-features = true, features = [
 embedded-text = "0.7.3"
 embedded-graphics = { version = "0.8.2", features = [] }
 embedded-hal = { version = "1.0.0", features = [] }
-serde = { version = "1.0.228", default-features = false, features = ["derive"] }
 serde_json = { version = "1.0.150", default-features = false, features = [
     "alloc",
 ] }

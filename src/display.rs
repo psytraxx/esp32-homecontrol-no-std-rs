@@ -43,11 +43,6 @@ pub struct Display<'a, D: DelayNs> {
     delay: D,
 }
 
-pub trait DisplayTrait {
-    fn write_multiline(&mut self, text: &str) -> Result<(), Error>;
-    fn enable_powersave(&mut self) -> Result<(), Error>;
-}
-
 pub struct DisplayPeripherals {
     pub rst: AnyPin<'static>,
     pub cs: AnyPin<'static>,
@@ -66,10 +61,10 @@ pub struct DisplayPeripherals {
 }
 
 impl<D: DelayNs> Display<'_, D> {
-    /// Create the display. When `enabled` is false (timer wake, no user present),
-    /// the display is initialized in power-save state — backlight stays off and
-    /// no pixels are driven, saving ~20–30mA during the awake window.
-    pub fn new(p: DisplayPeripherals, mut delay: D, enabled: bool) -> Result<Self, Error> {
+    /// Create and power up the display. Callers should only construct this
+    /// when they intend to show something (e.g. button wake) — building it
+    /// always draws backlight/panel current, so timer wakes should skip it.
+    pub fn new(p: DisplayPeripherals, mut delay: D) -> Result<Self, Error> {
         let backlight = Output::new(p.backlight, Level::Low, OutputConfig::default());
 
         let dc = Output::new(p.dc, Level::Low, OutputConfig::default());
@@ -94,7 +89,7 @@ impl<D: DelayNs> Display<'_, D> {
 
         let di = ParallelInterface::new(bus, dc, wr);
 
-        let mut display = Builder::new(mipidsi::models::ST7789, di)
+        let display = Builder::new(mipidsi::models::ST7789, di)
             .display_size(DISPLAY_HEIGHT, DISPLAY_WIDTH)
             .display_offset((240 - DISPLAY_HEIGHT) / 2, 0)
             .orientation(Orientation::new().rotate(Rotation::Deg270))
@@ -103,53 +98,45 @@ impl<D: DelayNs> Display<'_, D> {
             .init(&mut delay)
             .map_err(|_| Error::InitError)?;
 
-        if !enabled {
-            display.sleep(&mut delay)?;
-        }
-
-        Ok(Self {
+        let mut display = Self {
             display,
             backlight,
             delay,
-        })
+        };
+        display.wake()?;
+        Ok(display)
     }
 
-    fn disable_powersave(&mut self) -> Result<(), Error> {
+    fn wake(&mut self) -> Result<(), Error> {
         self.backlight.set_high();
         self.display.wake(&mut self.delay)?;
         self.display.clear(RgbColor::BLACK)?;
         Ok(())
     }
-}
 
-impl<D: DelayNs> DisplayTrait for Display<'_, D> {
-    fn write_multiline(&mut self, text: &str) -> Result<(), Error> {
-        self.disable_powersave()?;
+    pub fn write_multiline(&mut self, text: &str) -> Result<(), Error> {
         let textbox_style = TextBoxStyleBuilder::new()
             .height_mode(HeightMode::FitToText)
             .alignment(HorizontalAlignment::Justified)
             .build();
 
-        // Create the text box and apply styling options.
         let text_box = TextBox::with_textbox_style(
             text,
             self.display.bounding_box(),
             TEXT_STYLE,
             textbox_style,
         );
-        // Draw the text box.
         text_box.draw(&mut self.display)?;
         Ok(())
     }
 
-    fn enable_powersave(&mut self) -> Result<(), Error> {
+    pub fn enable_powersave(&mut self) -> Result<(), Error> {
         self.backlight.set_low();
         self.display.sleep(&mut self.delay)?;
         Ok(())
     }
 }
 
-/// A clock error
 #[derive(Debug)]
 pub enum Error {
     DisplayInterface(&'static str),

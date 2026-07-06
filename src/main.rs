@@ -11,10 +11,11 @@ use config::{
     AWAKE_DURATION_SECONDS, DEEP_SLEEP_DURATION_SECONDS, LOW_BATTERY_CUTOFF_MV,
     WIFI_CONNECT_TIMEOUT_SECONDS,
 };
-use display::{Display, DisplayPeripherals, DisplayTrait};
+use display::{Display, DisplayPeripherals};
 use domain::Sensor;
 use embassy_executor::Spawner;
 use embassy_futures::join::join;
+use embassy_net::Stack;
 use embassy_time::{Delay, Duration, Instant, Timer, with_timeout};
 use esp_alloc::{heap_allocator, psram_allocator};
 use esp_backtrace as _;
@@ -147,7 +148,6 @@ async fn main(spawner: Spawner) {
     info!("Request to disconnect wifi");
     WIFI_SIGNAL.signal(());
 
-    // set power pin to low to save power
     power_pin.set_low();
 
     let deep_sleep_duration = Duration::from_secs(DEEP_SLEEP_DURATION_SECONDS);
@@ -183,8 +183,9 @@ async fn run_cycle(
     let readout = sensors::begin_read(sensor_peripherals).await;
 
     // Low-battery guard: a weak LiPo browns out under radio/pump current spikes,
-    // causing a reset loop that drains it further. Skip WiFi and pump, show the
-    // readings, and sleep.
+    // causing a reset loop that drains it further. Skip WiFi and pump, and sleep.
+    // Only pay for the display (backlight + panel wake) when a human is present
+    // to read it (button_wake) — a timer wake has nobody watching.
     if let Some(battery_mv) = readout.battery_mv
         && battery_mv < LOW_BATTERY_CUTOFF_MV
     {
@@ -193,9 +194,11 @@ async fn run_cycle(
             battery_mv, LOW_BATTERY_CUTOFF_MV
         );
         let sensor_data = sensors::finish_read(readout).await;
-        let mut display = Display::new(display_peripherals, Delay, button_wake)?;
-        display.write_multiline(&format!("LOW BATTERY {battery_mv}mV\n{sensor_data}"))?;
-        display.enable_powersave()?;
+        if button_wake {
+            let mut display = Display::new(display_peripherals, Delay)?;
+            display.write_multiline(&format!("LOW BATTERY {battery_mv}mV\n{sensor_data}"))?;
+            display.enable_powersave()?;
+        }
         return Ok(());
     }
 
@@ -221,23 +224,46 @@ async fn run_cycle(
         .iter()
         .any(|e| matches!(e, Sensor::OverflowDetected(true)));
 
-    let mut display = Display::new(display_peripherals, Delay, button_wake)?;
-
-    let mut status = format!("{sensor_data}");
-    if button_wake {
-        if let Some(stack_config) = stack.config_v4() {
-            status = format!(
+    // Only build the display on button wake — nobody is watching a timer
+    // wake, so skip the backlight/panel current draw entirely for it.
+    let mut display = if button_wake {
+        let mut display = Display::new(display_peripherals, Delay)?;
+        let status = if let Some(stack_config) = stack.config_v4() {
+            format!(
                 "Reset: {:?}\nClient IP: {}\nBoot count: {}\n{}",
-                reset_reason, stack_config.address, boot_count, status
-            );
+                reset_reason, stack_config.address, boot_count, sensor_data
+            )
         } else {
             error!("Failed to get stack config");
-        }
-    }
-    display.write_multiline(&status)?;
+            format!("{sensor_data}")
+        };
+        display.write_multiline(&status)?;
+        Some(display)
+    } else {
+        None
+    };
 
+    let result = run_mqtt_session(stack, &sensor_data, pump_allowed, deadline, pump_pin).await;
+
+    if let Some(display) = &mut display {
+        display.enable_powersave()?;
+    }
+
+    result
+}
+
+/// Connect to MQTT, publish sensor state, then poll for pump commands until
+/// the awake deadline. Split out so the caller can always power down the
+/// display afterward regardless of how this returns.
+async fn run_mqtt_session(
+    stack: Stack<'static>,
+    sensor_data: &domain::SensorData,
+    pump_allowed: bool,
+    deadline: Instant,
+    pump_pin: &mut Output<'static>,
+) -> Result<(), Error> {
     let mut session = mqtt::connect(stack).await?;
-    session.publish(&sensor_data).await?;
+    session.publish(sensor_data).await?;
     session.subscribe_to_pump_commands().await?;
 
     // Keep listening until the deadline so a switch flipped while the device
@@ -255,7 +281,6 @@ async fn run_cycle(
         }
     }
 
-    display.enable_powersave()?;
     Ok(())
 }
 

@@ -1088,7 +1088,6 @@ dependencies = [
  "mipidsi",
  "nb 1.1.0",
  "rust-mqtt",
- "serde",
  "serde_json",
  "static_cell",
  "strum 0.28.0",

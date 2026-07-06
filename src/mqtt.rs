@@ -48,7 +48,10 @@ static RESOURCES: StaticCell<MqttResources> = StaticCell::new();
 
 type MqttClientImpl<'a> = Client<'a, TcpSocket<'a>, AllocBuffer, 1, 1, 1, 1>;
 
-pub struct MqttSession<'a>(MqttClientImpl<'a>);
+pub struct MqttSession<'a> {
+    client: MqttClientImpl<'a>,
+    pump_set_topic: String,
+}
 
 /// Resolve the broker, open the TCP socket and connect the MQTT session.
 /// Called once per wake cycle — there is no reconnect loop; on failure the
@@ -64,8 +67,10 @@ pub async fn connect(stack: Stack<'static>) -> Result<MqttSession<'static>, Erro
 
     let host_addr = stack
         .dns_query(env!("MQTT_HOSTNAME"), DnsQueryType::A)
-        .await
-        .map(|a| a[0])?;
+        .await?
+        .first()
+        .copied()
+        .ok_or(Error::DnsNoRecords)?;
 
     let port = env!("MQTT_PORT").parse()?;
     let socket_addr = (host_addr, port);
@@ -86,7 +91,7 @@ pub async fn connect(stack: Stack<'static>) -> Result<MqttSession<'static>, Erro
 
     let mut client = Client::<'_, _, _, 1, 1, 1, 1>::new(&mut resources.alloc_buffer);
 
-    match client
+    if let Err(e) = client
         .connect(
             socket,
             &options,
@@ -94,22 +99,16 @@ pub async fn connect(stack: Stack<'static>) -> Result<MqttSession<'static>, Erro
         )
         .await
     {
-        Ok(c) => {
-            info!("Connected to server {:?}", c);
-            info!("{:?}", client.client_config());
-            info!("{:?}", client.server_config());
-            info!("{:?}", client.shared_config());
-            info!("{:?}", client.session());
-        }
-        Err(e) => {
-            error!("Failed to connect to server: {:?}", e);
-            return Err(e.into());
-        }
-    };
+        error!("Failed to connect to server: {:?}", e);
+        return Err(e.into());
+    }
 
     info!("MQTT Broker connected");
 
-    Ok(MqttSession(client))
+    Ok(MqttSession {
+        client,
+        pump_set_topic: pump_set_topic(),
+    })
 }
 
 impl MqttSession<'_> {
@@ -128,8 +127,6 @@ impl MqttSession<'_> {
     /// delivered on subscribe, so an ON set while the device was asleep is never
     /// missed. Callers must establish the overflow state *before* subscribing.
     pub async fn subscribe_to_pump_commands(&mut self) -> Result<(), Error> {
-        let pump_set_topic = pump_set_topic();
-
         let sub_options = SubscriptionOptions {
             // Always deliver retained message on subscribe so a pending ON
             // set while the device was asleep is never missed.
@@ -141,10 +138,10 @@ impl MqttSession<'_> {
         };
 
         let topic =
-            TopicName::new_unchecked(MqttString::try_from(pump_set_topic.as_str()).unwrap());
-        self.0.subscribe(topic.into(), sub_options).await?;
+            TopicName::new_unchecked(MqttString::try_from(self.pump_set_topic.as_str()).unwrap());
+        self.client.subscribe(topic.into(), sub_options).await?;
 
-        info!("Subscribed to pump command topic: {}", pump_set_topic);
+        info!("Subscribed to pump command topic: {}", self.pump_set_topic);
         Ok(())
     }
 
@@ -156,9 +153,8 @@ impl MqttSession<'_> {
         pump_allowed: bool,
         deadline: Instant,
     ) -> Result<bool, Error> {
-        let pump_set_topic = pump_set_topic();
         loop {
-            let Ok(event) = with_deadline(deadline, self.0.poll()).await else {
+            let Ok(event) = with_deadline(deadline, self.client.poll()).await else {
                 return Ok(false); // awake window over
             };
             match event {
@@ -167,7 +163,6 @@ impl MqttSession<'_> {
                         .process_pump_command(
                             e.topic.as_ref().as_str(),
                             e.message.as_ref(),
-                            &pump_set_topic,
                             pump_allowed,
                         )
                         .await?
@@ -184,33 +179,40 @@ impl MqttSession<'_> {
         }
     }
 
+    /// Publish a single topic, optionally retained.
+    async fn publish_str(
+        &mut self,
+        topic: &str,
+        payload: &[u8],
+        retain: bool,
+    ) -> Result<(), Error> {
+        let topic_ref = TopicReference::Name(TopicName::new_unchecked(
+            MqttString::try_from(topic).unwrap(),
+        ));
+        let mut options = PublicationOptions::new(topic_ref);
+        if retain {
+            options = options.retain();
+        }
+        self.client
+            .publish(&options, Bytes::Borrowed(payload))
+            .await?;
+        Ok(())
+    }
+
     async fn publish_discovery_topics(&mut self) -> Result<(), Error> {
         if !DISCOVERY_MESSAGES_SENT.get() {
             info!("First run, sending discovery messages");
 
             for s in Sensor::iter() {
                 let (discovery_topic, message) = get_sensor_discovery(&s);
-
-                let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-                    MqttString::try_from(discovery_topic.as_str()).unwrap(),
-                ));
-                let options = PublicationOptions::new(topic_ref).retain();
-
-                self.0
-                    .publish(&options, Bytes::Borrowed(message.as_bytes()))
+                self.publish_str(&discovery_topic, message.as_bytes(), true)
                     .await?;
                 info!("Discovery message sent for sensor: {}", s.name());
             }
 
-            for (discovery_topic, message) in [get_pump_switch_discovery()] {
-                let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-                    MqttString::try_from(discovery_topic.as_str()).unwrap(),
-                ));
-                let options = PublicationOptions::new(topic_ref).retain();
-                self.0
-                    .publish(&options, Bytes::Borrowed(message.as_bytes()))
-                    .await?;
-            }
+            let (discovery_topic, message) = get_pump_switch_discovery();
+            self.publish_str(&discovery_topic, message.as_bytes(), true)
+                .await?;
 
             DISCOVERY_MESSAGES_SENT.set(true);
         } else {
@@ -224,10 +226,9 @@ impl MqttSession<'_> {
         &mut self,
         topic: &str,
         data: &[u8],
-        pump_set_topic: &str,
         pump_allowed: bool,
     ) -> Result<bool, Error> {
-        if topic != pump_set_topic {
+        if topic != self.pump_set_topic {
             warn!("Message on unhandled topic: {}", topic);
             return Ok(false);
         }
@@ -257,13 +258,8 @@ impl MqttSession<'_> {
     }
 
     async fn reset_pump_switch(&mut self) -> Result<(), Error> {
-        let topic_name = pump_set_topic();
-        let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-            MqttString::try_from(topic_name.as_str()).unwrap(),
-        ));
-        let options = PublicationOptions::new(topic_ref).retain();
-        self.0.publish(&options, Bytes::Borrowed(b"OFF")).await?;
-        Ok(())
+        let topic = self.pump_set_topic.clone();
+        self.publish_str(&topic, b"OFF", true).await
     }
 
     async fn publish_sensor_data(&mut self, sensor_data: &SensorData) -> Result<(), Error> {
@@ -279,13 +275,7 @@ impl MqttSession<'_> {
                 message.as_str()
             );
 
-            let topic_ref = TopicReference::Name(TopicName::new_unchecked(
-                MqttString::try_from(topic_name.as_str()).unwrap(),
-            ));
-            let options = PublicationOptions::new(topic_ref);
-
-            self.0
-                .publish(&options, Bytes::Borrowed(message.as_bytes()))
+            self.publish_str(&topic_name, message.as_bytes(), false)
                 .await?;
         }
 
@@ -357,6 +347,7 @@ fn get_common_device_info(topic: &str, name: &str) -> Value {
 pub enum Error {
     Port,
     Dns(DnsError),
+    DnsNoRecords,
     Connection(ConnectError),
     Broker(ReasonCode),
     Mqtt,
@@ -367,6 +358,7 @@ impl core::fmt::Display for Error {
         match self {
             Error::Port => write!(f, "Port error"),
             Error::Dns(e) => write!(f, "DNS error: {e:?}"),
+            Error::DnsNoRecords => write!(f, "DNS query returned no records"),
             Error::Connection(e) => write!(f, "Connection error: {e:?}"),
             Error::Broker(e) => write!(f, "Broker error: {e:?}"),
             Error::Mqtt => write!(f, "MQTT error"),

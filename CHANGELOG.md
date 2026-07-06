@@ -7,7 +7,34 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **ADC attenuation bug**: moisture and water-level pins were enabled on a separate `AdcConfig`
+  that was never passed to `Adc::new` — only the config passed to `Adc::new` has its
+  attenuations programmed into hardware, so both channels were silently read without the
+  intended 11 dB attenuation. All three ADC1 pins (moisture, water level, battery) now share
+  one config. **Existing `OVERFLOW_THRESHOLD`/`MOISTURE_MIN`/`MOISTURE_MAX` values in
+  `domain.rs` were calibrated against the buggy readings and need to be re-checked on hardware.**
+- **DNS query panic**: an empty DNS response for the MQTT broker hostname would panic on `a[0]`
+  indexing instead of returning an error; now returns `Error::DnsNoRecords`.
+- **Backlight left on during unattended wakes**: `Display::new` claimed to skip panel/backlight
+  work on timer wakes, but `write_multiline` unconditionally powered the backlight regardless —
+  every hourly timer wake (no button press) was driving the backlight and panel for the whole
+  MQTT command window. The display is now only constructed at all on button wake; timer wakes
+  skip it entirely. Same fix applied to the low-battery display path.
+- **WiFi connection task could miss a stop signal**: the graceful-disconnect signal was only
+  checked while connected; a stop request arriving during backoff sleep or mid-connect kept the
+  radio powered until deep sleep force-cut it. The signal is now checked at the top of the loop
+  and raced against both backoff sleeps.
+
 ### Changed
+- Replaced polling loops for WiFi link-up/IP-address with `Stack::wait_link_up`/`wait_config_up`.
+- Collapsed the repetitive per-sensor averaging blocks in `sensors/builder.rs` into a small
+  `push` helper; the DHT11 reading is now used directly instead of being replicated into sample
+  vectors to fit the same averaging code path.
+- Consolidated MQTT publish boilerplate into a `publish_str` helper and cached the pump
+  command topic string on `MqttSession` instead of rebuilding it per call.
+- Removed unused `DisplayTrait` (single implementor), unused `Serialize`/`Deserialize` derives
+  on `MoistureLevel` (dropped the `serde` dependency), and a no-op `.or(None)`.
 - **GPIO re-pin: pump relay GPIO2→GPIO13, moisture ADC GPIO11→GPIO2, water level ADC GPIO12→GPIO3**: all three sensor ADC pins moved from ADC2 to ADC1, eliminating the second ADC peripheral. `SensorPeripherals` and `SensorHardware` no longer carry `adc2`; `builder.rs` reads both sensors through `adc1`. Pump relay moved to GPIO13 to free GPIO2 for the moisture ADC.
 
 ### Fixed
