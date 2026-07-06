@@ -58,6 +58,7 @@ The wake cycle is one **linear async flow** in `main.rs::run_cycle()` — no int
 | 2 | Soil moisture | ADC1, 11dB attenuation |
 | 3 | Water level | ADC1, 11dB attenuation |
 | 4 | Battery voltage | ADC1, 11dB attenuation |
+| 5 | Display RST | ST7789 reset pin |
 | 13 | Pump relay | Active high |
 | 14 | Wake button | Deep sleep wake source |
 | 15 | Display power | **Must be HIGH** |

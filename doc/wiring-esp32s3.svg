@@ -1,0 +1,188 @@
+<svg viewBox="0 0 1280 1080" xmlns="http://www.w3.org/2000/svg" font-family="Helvetica, Arial, sans-serif">
+  <rect width="1280" height="1080" fill="#ffffff"/>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M2 1L8 5L2 9" fill="none" stroke="context-stroke" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
+    </marker>
+  </defs>
+
+  <text x="640" y="26" text-anchor="middle" font-size="16" font-weight="700" fill="#1a1a1a">Plant-monitor wiring — LilyGO T-Display-S3 (ESP32-S3)</text>
+
+  <!-- ════════ POWER: single-cell LiPo → board BAT (USB-C charges onboard) ════════ -->
+  <rect x="40" y="55" width="150" height="90" rx="10" fill="#FFF3CD" stroke="#BA7517" stroke-width="1.5"></rect>
+  <text x="115" y="86" text-anchor="middle" font-size="13" font-weight="700" fill="#633806">Single-cell LiPo</text>
+  <text x="115" y="104" text-anchor="middle" font-size="10" fill="#854F0B">3.3–4.2 V</text>
+  <text x="115" y="120" text-anchor="middle" font-size="9" fill="#854F0B">charged over USB-C on board</text>
+  <circle cx="190" cy="85" r="5" fill="#cc2200" stroke="#fff" stroke-width="1"></circle>
+  <text x="182" y="78" text-anchor="end" font-size="10" font-weight="700" fill="#cc2200">+</text>
+  <circle cx="190" cy="120" r="5" fill="#333" stroke="#fff" stroke-width="1"></circle>
+  <text x="182" y="124" text-anchor="end" font-size="10" font-weight="700" fill="#333">−</text>
+
+  <!-- LiPo → board JST (BAT + / GND −) -->
+  <path d="M190 85 L760 85 L760 374 L750 374" fill="none" stroke="#cc2200" stroke-width="3" marker-end="url(#arrow)"></path>
+  <text x="430" y="78" font-size="10" fill="#cc2200">LiPo + → BAT pin (onboard charger / 3V3 LDO)</text>
+  <path d="M190 120 L210 120 L210 715" fill="none" stroke="#888" stroke-width="2.5"></path>
+
+  <!-- ════════ DHT11 TEMP / HUMIDITY (1-wire digital) ════════ -->
+  <rect x="40" y="195" width="170" height="120" rx="10" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"></rect>
+  <text x="125" y="227" text-anchor="middle" font-size="13" font-weight="700" fill="#1B5E20">DHT11</text>
+  <text x="125" y="245" text-anchor="middle" font-size="10" fill="#2E7D32">temp / humidity</text>
+  <text x="125" y="261" text-anchor="middle" font-size="9" fill="#2E7D32">1-wire digital, ~1 Hz</text>
+  <circle cx="210" cy="240" r="5" fill="#2E7D32" stroke="#fff" stroke-width="1"></circle>
+  <text x="202" y="244" text-anchor="end" font-size="9" font-weight="700" fill="#1B5E20">VCC</text>
+  <circle cx="210" cy="275" r="5" fill="#2E7D32" stroke="#fff" stroke-width="1"></circle>
+  <text x="202" y="279" text-anchor="end" font-size="9" font-weight="700" fill="#1B5E20">DATA</text>
+  <circle cx="210" cy="305" r="5" fill="#2E7D32" stroke="#fff" stroke-width="1"></circle>
+  <text x="202" y="309" text-anchor="end" font-size="9" font-weight="700" fill="#1B5E20">GND</text>
+  <path d="M210 240 L240 240 L240 416 L490 416" fill="none" stroke="#EF9F27" stroke-width="2"></path>
+  <path d="M210 275 L270 275 L270 374 L490 374" fill="none" stroke="#2E7D32" stroke-width="2" marker-end="url(#arrow)"></path>
+  <text x="300" y="368" font-size="10" fill="#2E7D32">DATA → GPIO1</text>
+  <path d="M210 305 L225 305 L225 715" fill="none" stroke="#888" stroke-width="2"></path>
+
+  <!-- ════════ WATER LEVEL / OVERFLOW SENSOR ════════ -->
+  <rect x="40" y="365" width="170" height="150" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.5"></rect>
+  <text x="125" y="397" text-anchor="middle" font-size="13" font-weight="700" fill="#0D47A1">Water level /</text>
+  <text x="125" y="415" text-anchor="middle" font-size="13" font-weight="700" fill="#0D47A1">overflow sensor</text>
+  <text x="125" y="434" text-anchor="middle" font-size="9" fill="#1565C0">analog resistive (ADC1)</text>
+  <text x="125" y="448" text-anchor="middle" font-size="9" fill="#1565C0">~8 mV dry → ~800 mV wet</text>
+  <circle cx="210" cy="408" r="5" fill="#1565C0" stroke="#fff" stroke-width="1"></circle>
+  <text x="202" y="412" text-anchor="end" font-size="10" font-weight="700" fill="#0D47A1">S</text>
+  <circle cx="210" cy="458" r="5" fill="#1565C0" stroke="#fff" stroke-width="1"></circle>
+  <text x="202" y="462" text-anchor="end" font-size="10" font-weight="700" fill="#0D47A1">+</text>
+  <circle cx="210" cy="500" r="5" fill="#1565C0" stroke="#fff" stroke-width="1"></circle>
+  <text x="202" y="504" text-anchor="end" font-size="10" font-weight="700" fill="#0D47A1">−</text>
+  <path d="M210 408 L255 408 L255 458 L490 458" fill="none" stroke="#1565C0" stroke-width="2" marker-end="url(#arrow)"></path>
+  <text x="300" y="452" font-size="10" fill="#1565C0">signal → GPIO3 (ADC)</text>
+  <path d="M210 458 L285 458 L285 584 L490 584" fill="none" stroke="#1565C0" stroke-width="2" marker-start="url(#arrow)"></path>
+  <text x="300" y="578" font-size="10" fill="#1565C0">gated power ← GPIO21</text>
+  <path d="M210 500 L240 500 L240 715" fill="none" stroke="#888" stroke-width="2"></path>
+
+  <!-- ════════ ESP32 T-DISPLAY-S3 BOARD ════════ -->
+  <rect x="490" y="245" width="270" height="400" rx="10" fill="#EEEDFE" stroke="#534AB7" stroke-width="1.5"></rect>
+  <text x="625" y="271" text-anchor="middle" font-size="13" font-weight="700" fill="#26215C">LilyGO T-Display-S3</text>
+
+  <!-- left header pins -->
+  <circle cx="490" cy="290" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="505" y="294" font-size="11" font-weight="700" fill="#26215C">3V3 out</text>
+  <circle cx="490" cy="332" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="505" y="336" font-size="11" font-weight="700" fill="#26215C">GND</text>
+  <circle cx="490" cy="374" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="505" y="378" font-size="11" font-weight="700" fill="#26215C">GPIO1  DHT11 data</text>
+  <circle cx="490" cy="416" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="505" y="420" font-size="11" font-weight="700" fill="#26215C">GPIO2  Soil ADC (ADC1)</text>
+  <circle cx="490" cy="458" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="505" y="462" font-size="11" font-weight="700" fill="#26215C">GPIO3  Water ADC (ADC1)</text>
+  <circle cx="490" cy="500" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="505" y="504" font-size="11" font-weight="700" fill="#26215C">GPIO4  Battery ADC (ADC1)</text>
+  <circle cx="490" cy="542" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="505" y="546" font-size="11" font-weight="700" fill="#26215C">GPIO16 Soil PWR gate</text>
+  <circle cx="490" cy="584" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="505" y="588" font-size="11" font-weight="700" fill="#26215C">GPIO21 Water PWR gate</text>
+
+  <!-- right header pins -->
+  <circle cx="760" cy="290" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="745" y="294" text-anchor="end" font-size="11" font-weight="700" fill="#26215C">GPIO13 Relay</text>
+  <circle cx="760" cy="332" r="5" fill="#534AB7" stroke="#fff" stroke-width="1"></circle>
+  <text x="745" y="336" text-anchor="end" font-size="11" font-weight="700" fill="#26215C">GPIO14 Wake button</text>
+  <circle cx="760" cy="374" r="5" fill="#cc2200" stroke="#fff" stroke-width="1"></circle>
+  <text x="745" y="378" text-anchor="end" font-size="11" font-weight="700" fill="#26215C">BAT (LiPo +)</text>
+  <circle cx="760" cy="430" r="5" fill="#bbb" stroke="#fff" stroke-width="1"></circle>
+  <text x="745" y="434" text-anchor="end" font-size="9" fill="#999">✕ GPIO19/20 USB D−/D+</text>
+  <circle cx="760" cy="464" r="5" fill="#bbb" stroke="#fff" stroke-width="1"></circle>
+  <text x="745" y="468" text-anchor="end" font-size="9" fill="#999">✕ GPIO43 UART0 TX</text>
+  <circle cx="760" cy="498" r="5" fill="#bbb" stroke="#fff" stroke-width="1"></circle>
+  <text x="745" y="502" text-anchor="end" font-size="9" fill="#999">✕ GPIO5–9,15,38–48 display</text>
+
+  <!-- onboard peripherals note -->
+  <rect x="540" y="556" width="200" height="62" rx="5" fill="none" stroke="#AFA9EC" stroke-width="1" stroke-dasharray="4 2"></rect>
+  <text x="640" y="574" text-anchor="middle" font-size="8.5" fill="#534AB7">Onboard: 170×320 ST7789 LCD (8-bit parallel),</text>
+  <text x="640" y="588" text-anchor="middle" font-size="8.5" fill="#534AB7">USB-C + LiPo charger. No RGB LED.</text>
+  <text x="640" y="606" text-anchor="middle" font-size="8.5" fill="#534AB7">GPIO14 wakes from deep sleep; hold 5 s = factory reset.</text>
+
+  <!-- ════════ RELAY MODULE + PUMP ════════ -->
+  <rect x="950" y="70" width="230" height="170" rx="10" fill="#FFF8E1" stroke="#B26A00" stroke-width="1.5"></rect>
+  <text x="1065" y="104" text-anchor="middle" font-size="13" font-weight="700" fill="#7A4900">Relay module</text>
+  <text x="1065" y="122" text-anchor="middle" font-size="10" fill="#B26A00">3.3 V coil, active-high IN</text>
+  <text x="1065" y="138" text-anchor="middle" font-size="10" fill="#B26A00">auto-off after 10 s (firmware)</text>
+  <circle cx="950" cy="150" r="5" fill="#B26A00" stroke="#fff" stroke-width="1"></circle>
+  <text x="962" y="154" font-size="10" font-weight="700" fill="#7A4900">IN</text>
+  <circle cx="985" cy="240" r="5" fill="#B26A00" stroke="#fff" stroke-width="1"></circle>
+  <text x="985" y="256" text-anchor="middle" font-size="9" fill="#7A4900">VCC</text>
+  <circle cx="1025" cy="240" r="5" fill="#B26A00" stroke="#fff" stroke-width="1"></circle>
+  <text x="1025" y="256" text-anchor="middle" font-size="9" fill="#7A4900">GND</text>
+  <circle cx="1100" cy="240" r="5" fill="#B26A00" stroke="#fff" stroke-width="1"></circle>
+  <text x="1100" y="256" text-anchor="middle" font-size="9" fill="#7A4900">COM</text>
+  <circle cx="1145" cy="240" r="5" fill="#B26A00" stroke="#fff" stroke-width="1"></circle>
+  <text x="1145" y="256" text-anchor="middle" font-size="9" fill="#7A4900">NO</text>
+
+  <!-- GPIO13 → relay IN -->
+  <path d="M760 290 L870 290 L870 150 L950 150" fill="none" stroke="#1565C0" stroke-width="2" marker-end="url(#arrow)"></path>
+  <text x="880" y="140" font-size="10" fill="#1565C0">GPIO13 → IN</text>
+  <!-- relay VCC (3V3) / GND to rails -->
+  <path d="M985 240 L985 268 L930 268 L930 700" fill="none" stroke="#EF9F27" stroke-width="2"></path>
+  <path d="M1025 240 L1025 282 L908 282 L908 715" fill="none" stroke="#888" stroke-width="2"></path>
+  <!-- relay contacts → pump -->
+  <path d="M1100 240 L1100 300" fill="none" stroke="#555" stroke-width="2.5"></path>
+  <path d="M1145 240 L1145 300" fill="none" stroke="#555" stroke-width="2.5"></path>
+
+  <rect x="1040" y="300" width="200" height="110" rx="10" fill="none" stroke="#555" stroke-width="1.5" stroke-dasharray="6 3"></rect>
+  <text x="1140" y="334" text-anchor="middle" font-size="12" font-weight="700" fill="#333">Water pump</text>
+  <text x="1140" y="354" text-anchor="middle" font-size="10" fill="#555">+ dedicated pump supply,</text>
+  <text x="1140" y="370" text-anchor="middle" font-size="10" fill="#555">switched through COM / NO</text>
+  <text x="1140" y="386" text-anchor="middle" font-size="10" fill="#555">(not powered from the board)</text>
+
+  <!-- ════════ RAILS ════════ -->
+  <path d="M210 700 L1210 700" fill="none" stroke="#EF9F27" stroke-width="2.5"></path>
+  <path d="M210 715 L1210 715" fill="none" stroke="#888" stroke-width="2.5"></path>
+  <text x="1216" y="704" font-size="10" font-weight="700" fill="#EF9F27">3V3</text>
+  <text x="1216" y="719" font-size="10" font-weight="700" fill="#888">GND</text>
+
+  <!-- rail feeds from board -->
+  <path d="M490 290 L470 290 L470 700" fill="none" stroke="#EF9F27" stroke-width="2"></path>
+  <path d="M490 332 L455 332 L455 715" fill="none" stroke="#888" stroke-width="2"></path>
+
+  <!-- junction dots -->
+  <circle cx="240" cy="700" r="3.5" fill="#EF9F27"></circle>
+  <circle cx="470" cy="700" r="3.5" fill="#EF9F27"></circle>
+  <circle cx="930" cy="700" r="3.5" fill="#EF9F27"></circle>
+  <circle cx="210" cy="715" r="3.5" fill="#888"></circle>
+  <circle cx="225" cy="715" r="3.5" fill="#888"></circle>
+  <circle cx="240" cy="715" r="3.5" fill="#888"></circle>
+  <circle cx="455" cy="715" r="3.5" fill="#888"></circle>
+  <circle cx="908" cy="715" r="3.5" fill="#888"></circle>
+
+  <!-- ════════ CAPACITIVE ANALOG SOIL SENSOR ════════ -->
+  <rect x="520" y="800" width="240" height="150" rx="10" fill="#E3F2FD" stroke="#1565C0" stroke-width="1.5"></rect>
+  <text x="640" y="838" text-anchor="middle" font-size="13" font-weight="700" fill="#0D47A1">Capacitive soil sensor</text>
+  <text x="640" y="856" text-anchor="middle" font-size="10" fill="#1565C0">analog voltage output (ADC1)</text>
+  <text x="640" y="872" text-anchor="middle" font-size="10" fill="#1565C0">~1700 mV dry → ~820 mV wet</text>
+  <text x="640" y="888" text-anchor="middle" font-size="9" fill="#1565C0">power-gated via GPIO16</text>
+  <circle cx="560" cy="800" r="5" fill="#1565C0" stroke="#fff" stroke-width="1"></circle>
+  <text x="560" y="818" text-anchor="middle" font-size="9" fill="#0D47A1">VCC</text>
+  <circle cx="640" cy="800" r="5" fill="#1565C0" stroke="#fff" stroke-width="1"></circle>
+  <text x="640" y="818" text-anchor="middle" font-size="9" fill="#0D47A1">GND</text>
+  <circle cx="720" cy="800" r="5" fill="#1565C0" stroke="#fff" stroke-width="1"></circle>
+  <text x="720" y="818" text-anchor="middle" font-size="9" fill="#0D47A1">AOUT</text>
+  <!-- VCC power-gated via GPIO16 -->
+  <path d="M560 800 L560 760 L478 760 L478 542 L490 542" fill="none" stroke="#1565C0" stroke-width="2" marker-end="url(#arrow)"></path>
+  <text x="380" y="754" text-anchor="middle" font-size="10" fill="#1565C0">VCC ← GPIO16 (gated)</text>
+  <!-- GND -->
+  <path d="M640 800 L640 715" fill="none" stroke="#888" stroke-width="2"></path>
+  <!-- AOUT → GPIO2 -->
+  <path d="M720 800 L720 778 L463 778 L463 416 L490 416" fill="none" stroke="#1565C0" stroke-width="2" marker-end="url(#arrow)"></path>
+  <text x="900" y="775" text-anchor="middle" font-size="10" fill="#1565C0">AOUT → GPIO2 (ADC)</text>
+
+  <!-- ════════ LEGEND ════════ -->
+  <rect x="820" y="800" width="400" height="150" rx="8" fill="#f9f9f9" stroke="#ccc" stroke-width="1"></rect>
+  <text x="836" y="822" font-size="12" font-weight="700" fill="#1a1a1a">Legend</text>
+  <line x1="836" y1="840" x2="876" y2="840" stroke="#cc2200" stroke-width="3"></line>
+  <text x="884" y="844" font-size="10.5" fill="#333">Battery power: single-cell LiPo → board BAT (USB-C charges)</text>
+  <line x1="836" y1="862" x2="876" y2="862" stroke="#EF9F27" stroke-width="2"></line>
+  <text x="884" y="866" font-size="10.5" fill="#333">3.3 V supply rail (from 3V3 pin)</text>
+  <line x1="836" y1="884" x2="876" y2="884" stroke="#888" stroke-width="2"></line>
+  <text x="884" y="888" font-size="10.5" fill="#333">GND rail / returns (incl. battery −)</text>
+  <line x1="836" y1="906" x2="876" y2="906" stroke="#1565C0" stroke-width="2"></line>
+  <text x="884" y="910" font-size="10.5" fill="#333">GPIO2 soil ADC · GPIO3 water ADC · GPIO13 relay</text>
+  <line x1="836" y1="928" x2="876" y2="928" stroke="#2E7D32" stroke-width="2"></line>
+  <text x="884" y="932" font-size="10.5" fill="#333">GPIO1 DHT11 · GPIO16/21 sensor power gates · GPIO14 wake/reset</text>
+</svg>

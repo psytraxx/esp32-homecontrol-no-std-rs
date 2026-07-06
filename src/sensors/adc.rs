@@ -87,5 +87,4 @@ where
     let sum: i32 = samples.iter().map(|&x| x.into()).sum();
     sum.checked_div(samples.len() as i32)
         .and_then(|avg| avg.try_into().ok())
-        .or(None)
 }

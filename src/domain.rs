@@ -1,7 +1,6 @@
 use alloc::string::{String, ToString};
 use core::fmt::{Display, Formatter, Result};
 use heapless::Vec;
-use serde::{Deserialize, Serialize};
 use strum_macros::EnumIter;
 
 const OVERFLOW_THRESHOLD: u16 = 2800;
@@ -30,7 +29,7 @@ impl Display for SensorData {
 }
 
 /// Represents the qualitative state of soil moisture as interpreted from sensor readings.
-#[derive(Debug, Serialize, Deserialize, PartialEq, Default)]
+#[derive(Debug, PartialEq, Default)]
 pub enum MoistureLevel {
     Wet,   // Soil is wet
     Moist, // Soil is moist (intermediate)
