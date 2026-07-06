@@ -19,8 +19,14 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **Backlight left on during unattended wakes**: `Display::new` claimed to skip panel/backlight
   work on timer wakes, but `write_multiline` unconditionally powered the backlight regardless —
   every hourly timer wake (no button press) was driving the backlight and panel for the whole
-  MQTT command window. The display is now only constructed at all on button wake; timer wakes
-  skip it entirely. Same fix applied to the low-battery display path.
+  MQTT command window. The display is now only constructed at all on an attended wake; timer
+  wakes skip it entirely. Same fix applied to the low-battery display path.
+- **Display blank on cold boot / USB reset**: the above fix initially gated display construction
+  on `wakeup_cause() == Ext0` (button press), but a fresh flash or USB reset is neither an Ext0
+  nor a Timer wake, so `button_wake` was false and the display never showed anything — exactly
+  when someone is plugged in and watching. The gate is now "not a Timer wake" instead of
+  "is a button wake", so cold boots show sensor data again while hourly timer wakes still skip
+  the display.
 - **WiFi connection task could miss a stop signal**: the graceful-disconnect signal was only
   checked while connected; a stop request arriving during backoff sleep or mid-connect kept the
   radio powered until deep sleep force-cut it. The signal is now checked at the top of the loop

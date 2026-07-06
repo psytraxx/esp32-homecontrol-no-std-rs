@@ -174,7 +174,9 @@ async fn run_cycle(
     // sensors and publishing don't use remains as the MQTT command window.
     let deadline = Instant::now() + Duration::from_secs(AWAKE_DURATION_SECONDS);
 
-    let button_wake = matches!(wakeup_cause(), SleepSource::Ext0);
+    // Timer wakes are unattended; button wakes and any other wake (e.g. cold
+    // boot / USB reset, which is neither Ext0 nor Timer) have someone present.
+    let display_enabled = !matches!(wakeup_cause(), SleepSource::Timer);
 
     // Pre-radio phase: read the timing-sensitive DHT11 and an early battery
     // sample *before* the WiFi radio is powered on, so radio interrupts can't
@@ -184,8 +186,8 @@ async fn run_cycle(
 
     // Low-battery guard: a weak LiPo browns out under radio/pump current spikes,
     // causing a reset loop that drains it further. Skip WiFi and pump, and sleep.
-    // Only pay for the display (backlight + panel wake) when a human is present
-    // to read it (button_wake) — a timer wake has nobody watching.
+    // Only pay for the display (backlight + panel wake) on an attended wake —
+    // a timer wake has nobody watching.
     if let Some(battery_mv) = readout.battery_mv
         && battery_mv < LOW_BATTERY_CUTOFF_MV
     {
@@ -194,7 +196,7 @@ async fn run_cycle(
             battery_mv, LOW_BATTERY_CUTOFF_MV
         );
         let sensor_data = sensors::finish_read(readout).await;
-        if button_wake {
+        if display_enabled {
             let mut display = Display::new(display_peripherals, Delay)?;
             display.write_multiline(&format!("LOW BATTERY {battery_mv}mV\n{sensor_data}"))?;
             display.enable_powersave()?;
@@ -224,9 +226,9 @@ async fn run_cycle(
         .iter()
         .any(|e| matches!(e, Sensor::OverflowDetected(true)));
 
-    // Only build the display on button wake — nobody is watching a timer
-    // wake, so skip the backlight/panel current draw entirely for it.
-    let mut display = if button_wake {
+    // Only build the display on an attended wake — nobody is watching a
+    // timer wake, so skip the backlight/panel current draw entirely for it.
+    let mut display = if display_enabled {
         let mut display = Display::new(display_peripherals, Delay)?;
         let status = if let Some(stack_config) = stack.config_v4() {
             format!(
