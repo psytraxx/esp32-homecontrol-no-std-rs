@@ -8,6 +8,12 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 ## [Unreleased]
 
 ### Fixed
+- **Boot count rendered as a categorical colored bar in HA**: `state_class` was only set when a
+  sensor had a unit, so the unitless boot counter was published with no `state_class` and Home
+  Assistant charted it with the discrete/enum renderer (one color per integer value, forever)
+  instead of a numeric line. `state_class` is now chosen per sensor via `Sensor::state_class()`,
+  independent of the unit — `total_increasing` for the boot counter, `measurement` for the
+  continuous numeric sensors, and none for the qualitative overflow/moisture-level sensors.
 - **RTC memory was reset on every wake (`BOOT_COUNT`/`DISCOVERY_MESSAGES_SENT` never persisted)**:
   both statics used `#[ram(unstable(rtc_fast))]` *without* the `persistent` option. Plain
   `rtc_fast` places the value in RTC fast RAM but re-applies its initializer on every reset,

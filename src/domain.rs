@@ -112,6 +112,23 @@ impl Sensor {
         }
     }
 
+    /// Get the HA `state_class` of the sensor, which controls how HA charts and
+    /// stores it. `measurement` for continuous numeric readings, `total_increasing`
+    /// for the monotonic boot counter (so HA draws it as a numeric line rather
+    /// than the categorical colored-bar renderer used for stateless enums).
+    /// `None` for qualitative/boolean sensors (overflow, moisture level).
+    /// See https://www.home-assistant.io/integrations/sensor/#state_class
+    pub fn state_class(&self) -> Option<&'static str> {
+        match self {
+            Sensor::AirTemperature(_)
+            | Sensor::AirHumidity(_)
+            | Sensor::BatteryVoltage(_)
+            | Sensor::SoilMoistureRaw(_) => Some("measurement"),
+            Sensor::BootCount(_) => Some("total_increasing"),
+            Sensor::OverflowDetected(_) | Sensor::SoilMoisture(_) => None,
+        }
+    }
+
     /// Get the MQTT topic for the sensor
     pub fn topic(&self) -> &'static str {
         match self {

@@ -300,11 +300,15 @@ fn get_sensor_discovery(s: &Sensor) -> (String, String) {
         payload["device_class"] = json!(device_class);
     }
 
-    let unit = s.unit();
-    if let Some(unit) = unit {
+    if let Some(unit) = s.unit() {
         payload["unit_of_measurement"] = json!(unit);
-        // only set state_class if unit is present - enables Home Assistant to display the unit correctly and keep track of state changes
-        payload["state_class"] = json!("measurement");
+    }
+
+    // state_class drives HA's charting: numeric sensors (incl. the boot counter)
+    // get a line graph; unitless enum/boolean sensors get none so HA doesn't try
+    // to plot them as measurements.
+    if let Some(state_class) = s.state_class() {
+        payload["state_class"] = json!(state_class);
     }
 
     // Force HA to record every incoming value even when unchanged, so a frozen
