@@ -38,7 +38,7 @@ jobs:
           # see https://github.com/esp-rs/rust-build/releases for available versions
           ldproxy: false
       - name: Run sccache-cache
-        uses: mozilla-actions/sccache-action@v0.0.10
+        uses: mozilla-actions/sccache-action@v0.0.11
       - name: Run build
         run: cargo build  --release
       - name: Run fmt
