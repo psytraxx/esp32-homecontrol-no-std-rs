@@ -9,9 +9,33 @@ ESP32-based plant watering system for the LilyGO T-Display-S3 board using no-std
 Before committing any change:
 1. **`cargo fmt`** — format all code (run first, always)
 2. **`cargo clippy`** — fix all warnings before proceeding
-3. **Update `CHANGELOG.md`** — add entry under `[Unreleased]` describing what changed and why
+3. **Update `CHANGELOG.md`** — add an entry under today's date (see rules below)
 
 Never skip these steps. Clippy warnings are treated as errors.
+
+### CHANGELOG rules
+
+**Describe the what, not the how.** An entry states the observable change and why it matters to
+someone running the device — not the mechanism, the identifiers touched, or the debugging story.
+The code and git history already record the how.
+
+- One or two lines per entry. If it needs a paragraph, it's describing implementation.
+- Don't name functions, types, macros, or fields unless they're a user-facing API (an MQTT topic,
+  a config constant someone tunes, a GPIO pin).
+- Keep an action the user must take — deleting a retained broker topic, re-checking a calibration
+  constant — in **bold**. These are the entries that justify reading the file.
+- Group under `### Added` / `### Changed` / `### Fixed` / `### Removed` / `### Documentation`.
+  Never repeat a heading within one date; add to the existing one.
+
+```
+Good: Boot count now charts as a numeric line in Home Assistant instead of a categorical bar.
+Bad:  `state_class` was only set when a sensor had a unit, so the unitless boot counter was
+      published with no `state_class` and HA charted it with the discrete/enum renderer...
+```
+
+**The changelog is date-based, not version-based.** Headings are a bare date, `## YYYY-MM-DD`,
+newest first. There are no version numbers and no `[Unreleased]` section. Add today's date as a
+new heading at the top if it isn't there yet; otherwise add to the existing one.
 
 ---
 

@@ -83,9 +83,11 @@ graph TD
   - Pump controlled via HA switch entity; retained `ON` survives deep sleep and executes on next wake
 
 - **Power Management**
-  - Deep sleep support
-  - Configurable wake/sleep cycles
-  - Battery-optimized operation
+  - Deep sleep support (~59.5 min sleep, 30 s awake window)
+  - Wake on timer or on the GPIO14 button
+  - Low-battery guard: below 3300 mV the cycle skips WiFi and the pump entirely,
+    so a weak LiPo can't brown out under radio/pump current and reset-loop itself flat
+  - Display is only powered on attended wakes (button or cold boot), not timer wakes
 
 ## MQTT Integration
 
@@ -99,6 +101,7 @@ graph TD
 | `{DEVICE_ID}/moistureraw` | `{"value": "1850"}` | Raw soil moisture (mV) |
 | `{DEVICE_ID}/overflow` | `{"value": "YES"}` / `{"value": "NO"}` | Drainage overflow sensor |
 | `{DEVICE_ID}/batteryvoltage` | `{"value": "3820"}` | Battery voltage (mV) |
+| `{DEVICE_ID}/bootcount` | `{"value": "42"}` | Wake cycles since first boot (RTC memory) |
 
 ### Subscribed topics
 
@@ -112,13 +115,17 @@ The pump is controlled exclusively via Home Assistant using a **switch entity**.
 
 **Flow:**
 1. Flip the **Water pump** switch to `ON` in HA from anywhere — broker stores it as retained.
-2. On the next wake cycle, the device reads all sensors first (establishing overflow state).
+2. On the next wake cycle, the device reads all sensors (in parallel with the WiFi connect), establishing overflow state.
 3. Device then subscribes to the pump topic — retained `ON` is delivered with overflow state already known.
 4. Device resets the switch to `OFF` (retained) so a second wake doesn't re-trigger.
 5. If overflow detected (raw ADC > 2800; measured ~2217 mV dry, ~3475 mV submerged) — blocked, pump does not run.
 6. Otherwise runs the pump for **10 seconds**.
 
-There is no auto-trigger from soil moisture. The pump run is awaited inline by the wake cycle: commands arriving during a run are processed only after it completes, and the device never enters deep sleep mid-run.
+The interlock is **fail-closed**: the pump runs only on an explicit "no overflow" reading. If the
+water-level sensor read fails and no overflow reading is produced at all, the pump is blocked
+rather than defaulting to allowed. A low battery (step above) also blocks the pump for the cycle.
+
+There is no auto-trigger from soil moisture. The pump run is awaited inline by the wake cycle: commands arriving during a run are processed only after it completes, and the device never enters deep sleep mid-run. The entire MQTT session is bounded by the 30 s awake deadline, so a stalled broker can't keep the radio on — the device sleeps and retries next hour.
 
 ---
 
@@ -128,7 +135,6 @@ The project uses several Rust crates to provide functionality:
 
 ### Async/Embedded Frameworks
 
-- [embassy](https://crates.io/crates/embassy)
 - [embassy-executor](https://crates.io/crates/embassy-executor)
 - [embassy-futures](https://crates.io/crates/embassy-futures)
 - [embassy-net](https://crates.io/crates/embassy-net)
@@ -142,13 +148,15 @@ The project uses several Rust crates to provide functionality:
 - [embedded-hal](https://crates.io/crates/embedded-hal)
 - [embedded-text](https://crates.io/crates/embedded-text)
 - [embedded-graphics](https://crates.io/crates/embedded-graphics)
+- [nb](https://crates.io/crates/nb)
+- [dht-sensor](https://crates.io/crates/dht-sensor)
 
 ---
 
 ### Networking
 
 - [rust-mqtt](https://crates.io/crates/rust-mqtt)
-- [esp-wifi](https://crates.io/crates/esp-wifi)
+- [esp-radio](https://crates.io/crates/esp-radio)
 
 ---
 
@@ -156,8 +164,10 @@ The project uses several Rust crates to provide functionality:
 
 - [esp-alloc](https://crates.io/crates/esp-alloc)
 - [esp-backtrace](https://crates.io/crates/esp-backtrace)
+- [esp-bootloader-esp-idf](https://crates.io/crates/esp-bootloader-esp-idf)
 - [esp-hal](https://crates.io/crates/esp-hal)
-- [esp-hal-embassy](https://crates.io/crates/esp-hal-embassy)
+- [esp-println](https://crates.io/crates/esp-println)
+- [esp-rtos](https://crates.io/crates/esp-rtos)
 
 ---
 
@@ -179,7 +189,6 @@ The built-in 1.9" ST7789 LCD display on the T-Display-S3 has the following pin c
 
 ### Serialization
 
-- [serde](https://crates.io/crates/serde)
 - [serde_json](https://crates.io/crates/serde_json)
 
 ---
@@ -188,8 +197,9 @@ The built-in 1.9" ST7789 LCD display on the T-Display-S3 has the following pin c
 
 - [heapless](https://crates.io/crates/heapless)
 - [static_cell](https://crates.io/crates/static_cell)
-- [rand_core](https://crates.io/crates/rand_core)
-- ...and others
+- [strum](https://crates.io/crates/strum)
+- [critical-section](https://crates.io/crates/critical-section)
+- [log](https://crates.io/crates/log)
 
 ---
 
