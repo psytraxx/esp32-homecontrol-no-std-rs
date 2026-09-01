@@ -7,6 +7,13 @@ Changes are grouped by date, newest first.
 
 ---
 
+## 2026-09-01
+
+### Fixed
+- Restored a clean build against the updated dependencies (patch-level bumps).
+
+---
+
 ## 2026-08-14
 
 ### Documentation

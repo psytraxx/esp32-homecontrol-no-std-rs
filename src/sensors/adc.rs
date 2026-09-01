@@ -62,7 +62,7 @@ where
     match nb::block!(adc.read_oneshot(pin)) {
         Ok(value) => Some(value),
         Err(e) => {
-            error!("Error reading sensor: {:?}", &e);
+            error!("Error reading sensor: {:?}", e);
             None
         }
     }
