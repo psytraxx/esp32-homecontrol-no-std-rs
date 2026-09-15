@@ -26,12 +26,12 @@ embassy-net = { version = "0.9.1", features = [
     "dns",
 ] }
 esp-alloc = "0.10.0"
-esp-backtrace = { version = "0.19.0", features = [
+esp-backtrace = { version = "0.20.0", features = [
     "esp32s3",
     "panic-handler",
     "println",
 ] }
-esp-println = { version = "0.17.0", features = ["esp32s3", "log-04"] }
+esp-println = { version = "0.18.0", features = ["esp32s3", "log-04"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
 embassy-executor = { version = "0.10.0", features = ["log"] }
 embassy-time = { version = "0.5.0", features = ["log"] }
