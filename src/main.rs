@@ -24,7 +24,6 @@ use esp_hal::{
     clock::CpuClock,
     gpio::{Level, Output, OutputConfig, Pin},
     peripherals::WIFI,
-    rng::Rng,
     rtc_cntl::{SocResetReason, wakeup_cause},
     system::{SleepSource, reset_reason},
     timer::timg::TimerGroup,
@@ -189,15 +188,12 @@ async fn run_cycle(
         return Ok(());
     }
 
-    let rng = Rng::new();
-    let seed = (rng.random() as u64) << 32 | rng.random() as u64;
-
     // Overlap the slow WiFi/DHCP handshake with the ADC sampling (moisture,
     // water level, battery) — these are not timing-sensitive to radio activity.
     let (stack, mut sensor_data) = join(
         with_timeout(
             Duration::from_secs(WIFI_CONNECT_TIMEOUT_SECONDS),
-            connect_to_wifi(wifi, seed, spawner),
+            connect_to_wifi(wifi, spawner),
         ),
         sensors::finish_read(readout),
     )

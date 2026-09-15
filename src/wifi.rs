@@ -5,6 +5,7 @@ use embassy_net::{Config, DhcpConfig, Runner, Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals;
+use esp_hal::rng::Rng;
 use esp_radio::wifi::{ControllerConfig, Interface, WifiController, WifiError, sta::StationConfig};
 use log::{error, info};
 use static_cell::StaticCell;
@@ -19,7 +20,6 @@ pub static WIFI_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 pub async fn connect_to_wifi(
     wifi: peripherals::WIFI<'static>,
-    seed: u64,
     spawner: Spawner,
 ) -> Result<Stack<'static>, WifiError> {
     let station_config = esp_radio::wifi::Config::Station(
@@ -42,6 +42,9 @@ pub async fn connect_to_wifi(
 
     let dhcp_config = DhcpConfig::default();
     let config = Config::dhcpv4(dhcp_config);
+
+    let rng = Rng::new();
+    let seed = (rng.random() as u64) << 32 | rng.random() as u64;
 
     info!("Initialize network stack");
     let stack_resources: &'static mut _ = STACK_RESOURCES.init(StackResources::new());
