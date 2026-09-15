@@ -7,6 +7,16 @@ Changes are grouped by date, newest first.
 
 ---
 
+## 2026-09-15
+
+### Changed
+- Display/PSRAM power is no longer brought up on unattended timer wakes, saving init current on
+  the vast majority of cycles.
+- WiFi now gives up and goes back to sleep sooner on a stuck connection, leaving more of the awake
+  window for MQTT instead of tying up the radio.
+
+---
+
 ## 2026-09-01
 
 ### Fixed

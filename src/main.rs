@@ -67,11 +67,20 @@ async fn main(spawner: Spawner) {
     info!("Current boot count = {}", boot_count);
     set_boot_count(boot_count + 1);
 
+    // Timer wakes are unattended; button wakes and any other wake (e.g. cold
+    // boot / USB reset, which is neither Ext0 nor Timer) have someone present.
+    let display_enabled = !matches!(wakeup_cause(), SleepSource::Timer);
+
     let peripherals = esp_hal::init(Config::default().with_cpu_clock(CpuClock::_80MHz));
 
     heap_allocator!(#[unsafe(link_section = ".dram2_uninit")] size: 73744);
 
-    psram_allocator!(peripherals.PSRAM, esp_hal::psram);
+    // PSRAM only backs the display's framebuffer; skip bringing it up on
+    // unattended timer wakes (the vast majority of cycles) to avoid its init
+    // current draw.
+    if display_enabled {
+        psram_allocator!(peripherals.PSRAM, esp_hal::psram);
+    }
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     let sw_interrupt =
@@ -112,6 +121,12 @@ async fn main(spawner: Spawner) {
         adc1: peripherals.ADC1,
     };
 
+    let wake_context = WakeContext {
+        boot_count,
+        reset_reason,
+        display_enabled,
+    };
+
     // The wake cycle is fallible, but the device always goes back to sleep:
     // a failed cycle (router down, broker unreachable) retries in an hour
     // instead of boot-looping with the radio on.
@@ -121,8 +136,7 @@ async fn main(spawner: Spawner) {
         display_peripherals,
         sensor_peripherals,
         &mut pump_pin,
-        boot_count,
-        reset_reason,
+        wake_context,
     )
     .await
     {
@@ -151,16 +165,17 @@ async fn run_cycle(
     display_peripherals: DisplayPeripherals,
     sensor_peripherals: SensorPeripherals,
     pump_pin: &mut Output<'static>,
-    boot_count: u32,
-    reset_reason: Option<SocResetReason>,
+    wake_context: WakeContext,
 ) -> Result<(), Error> {
+    let WakeContext {
+        boot_count,
+        reset_reason,
+        display_enabled,
+    } = wake_context;
+
     // Everything in the cycle works against one deadline: whatever time WiFi,
     // sensors and publishing don't use remains as the MQTT command window.
     let deadline = Instant::now() + Duration::from_secs(AWAKE_DURATION_SECONDS);
-
-    // Timer wakes are unattended; button wakes and any other wake (e.g. cold
-    // boot / USB reset, which is neither Ext0 nor Timer) have someone present.
-    let display_enabled = !matches!(wakeup_cause(), SleepSource::Timer);
 
     // Pre-radio phase: read the timing-sensitive DHT11 and an early battery
     // sample *before* the WiFi radio is powered on, so radio interrupts can't
@@ -301,6 +316,14 @@ async fn run_mqtt_session(
     }
 
     Ok(())
+}
+
+/// Wake-time context established before `esp_hal::init`, bundled so it can be
+/// threaded through `run_cycle` as one argument.
+struct WakeContext {
+    boot_count: u32,
+    reset_reason: Option<SocResetReason>,
+    display_enabled: bool,
 }
 
 #[derive(Debug)]

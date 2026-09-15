@@ -29,8 +29,8 @@ use strum::IntoEnumIterator;
 
 use crate::{
     config::{
-        DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX, HOMEASSISTANT_SENSOR_TOPIC,
-        HOMEASSISTANT_SWITCH_TOPIC, MQTT_PUBLISH_ENABLED,
+        AWAKE_DURATION_SECONDS, DEVICE_ID, HOMEASSISTANT_DISCOVERY_TOPIC_PREFIX,
+        HOMEASSISTANT_SENSOR_TOPIC, HOMEASSISTANT_SWITCH_TOPIC, MQTT_PUBLISH_ENABLED,
     },
     domain::{Sensor, SensorData},
     rtc_memory::{discovery_messages_sent, set_discovery_messages_sent},
@@ -83,8 +83,11 @@ pub async fn connect(stack: Stack<'static>) -> Result<MqttSession<'static>, Erro
         user_name: Some(MqttString::try_from(env!("MQTT_USERNAME")).unwrap()),
         password: Some(MqttBinary::try_from(env!("MQTT_PASSWORD")).unwrap()),
         clean_start: true,
-        keep_alive: KeepAlive::Seconds(NonZero::new(60).unwrap()),
-        session_expiry_interval: SessionExpiryInterval::Seconds(60),
+        // The session never outlives one wake cycle (bounded by AWAKE_DURATION_SECONDS),
+        // so keep-alive/session-expiry only need to cover that window, not a lingering
+        // connection.
+        keep_alive: KeepAlive::Seconds(NonZero::new(AWAKE_DURATION_SECONDS as u16).unwrap()),
+        session_expiry_interval: SessionExpiryInterval::Seconds(AWAKE_DURATION_SECONDS as u32),
         will: None,
         ..Default::default()
     };

@@ -7,8 +7,10 @@ pub const HOMEASSISTANT_SENSOR_TOPIC: &str = "sensor";
 pub const HOMEASSISTANT_SWITCH_TOPIC: &str = "switch";
 // ESP will go to deep sleep and not report any data for this duration
 pub const DEEP_SLEEP_DURATION_SECONDS: u64 = 3600 - AWAKE_DURATION_SECONDS;
-/// Give up on WiFi after this long and go back to sleep instead of waiting forever
-pub const WIFI_CONNECT_TIMEOUT_SECONDS: u64 = 30;
+/// Give up on WiFi after this long and go back to sleep instead of waiting forever.
+/// Kept well under `AWAKE_DURATION_SECONDS` so a stuck association/DHCP handshake
+/// can't burn the entire awake window on the radio alone, leaving nothing for MQTT.
+pub const WIFI_CONNECT_TIMEOUT_SECONDS: u64 = 15;
 
 /// WiFi reconnect backoff bounds. After a link drop or failed association the
 /// connection task waits this long before retrying, doubling up to the cap.
