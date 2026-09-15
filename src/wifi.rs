@@ -1,10 +1,10 @@
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
+use embassy_net::driver::Driver;
 use embassy_net::{Config, DhcpConfig, Runner, Stack, StackResources};
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal};
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals;
-use esp_radio::wifi::Config as WifiConfig;
 use esp_radio::wifi::{ControllerConfig, Interface, WifiController, WifiError, sta::StationConfig};
 use log::{error, info};
 use static_cell::StaticCell;
@@ -22,30 +22,30 @@ pub async fn connect_to_wifi(
     seed: u64,
     spawner: Spawner,
 ) -> Result<Stack<'static>, WifiError> {
-    let station_config = StationConfig::default()
-        .with_ssid(env!("WIFI_SSID"))
-        .with_password(env!("WIFI_PSK").into());
+    let station_config = esp_radio::wifi::Config::Station(
+        StationConfig::default()
+            .with_ssid(env!("WIFI_SSID"))
+            .with_password(env!("WIFI_PSK").into()),
+    );
 
-    let controller_config =
-        ControllerConfig::default().with_initial_config(WifiConfig::Station(station_config));
+    let controller = esp_radio::wifi::WifiController::new(
+        wifi,
+        ControllerConfig::default().with_initial_config(station_config),
+    )?;
 
-    let (controller, interfaces) = esp_radio::wifi::new(wifi, controller_config)?;
-
-    {
-        use embassy_net::driver::Driver;
-        let caps = interfaces.station.capabilities();
-        info!(
-            "WiFi driver capabilities: MTU={}, max_burst={:?}",
-            caps.max_transmission_unit, caps.max_burst_size
-        );
-    }
+    let wifi_interface = esp_radio::wifi::Interface::station();
+    let caps = wifi_interface.capabilities();
+    info!(
+        "WiFi driver capabilities: MTU={}, max_burst={:?}",
+        caps.max_transmission_unit, caps.max_burst_size
+    );
 
     let dhcp_config = DhcpConfig::default();
     let config = Config::dhcpv4(dhcp_config);
 
     info!("Initialize network stack");
     let stack_resources: &'static mut _ = STACK_RESOURCES.init(StackResources::new());
-    let (stack, runner) = embassy_net::new(interfaces.station, config, stack_resources, seed);
+    let (stack, runner) = embassy_net::new(wifi_interface, config, stack_resources, seed);
 
     spawner.spawn(connection(controller).expect("Unable to start controller"));
     spawner.spawn(net_task(runner).expect("Unable to start net task"));
@@ -63,7 +63,7 @@ pub async fn connect_to_wifi(
 }
 
 #[embassy_executor::task]
-async fn net_task(mut runner: Runner<'static, Interface<'static>>) {
+async fn net_task(mut runner: Runner<'static, Interface>) {
     runner.run().await
 }
 

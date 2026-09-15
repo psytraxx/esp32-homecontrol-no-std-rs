@@ -15,5 +15,6 @@
     "--target",
     "xtensa-esp32s3-none-elf"
   ],
-  "chat.useAgentSkills": true
+  "chat.useAgentSkills": true,
+  "dependi.rust.unstableFilter": "IncludeAlways"
 }
