@@ -7,6 +7,13 @@ Changes are grouped by date, newest first.
 
 ---
 
+## 2026-09-16
+
+### Fixed
+- Restored a clean build against the updated dependencies (esp-hal/esp-radio/esp-rtos bumps).
+
+---
+
 ## 2026-09-15
 
 ### Changed

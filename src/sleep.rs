@@ -1,25 +1,26 @@
 use embassy_time::Duration;
-use esp_hal::gpio::RtcPin;
+use esp_hal::gpio::{AnyPin, Event, Input, InputConfig, Pull, WakeupConfig};
 use esp_hal::peripherals::LPWR;
-use esp_hal::rtc_cntl::Rtc;
-use esp_hal::rtc_cntl::sleep::{RtcSleepConfig, RtcioWakeupSource, TimerWakeupSource, WakeupLevel};
+use esp_hal::rtc_cntl::sleep::{LowPower, RtcSleepConfig};
+use esp_hal::time::{Duration as HalDuration, Instant};
 
 /// Enter deep sleep mode for the specified duration.
 ///
 /// Callers should log and flush output (e.g. `Timer::after(100ms).await`)
-/// before calling this function — once `rtc.sleep` is invoked the USB CDC
+/// before calling this function — once `sleep_deep` is invoked the USB CDC
 /// serial has no opportunity to drain its transmit buffer.
-pub fn enter_deep(wakeup_pin: &mut dyn RtcPin, rtc_cntl: LPWR, interval: Duration) -> ! {
-    let wakeup_pins: &mut [(&mut dyn RtcPin, WakeupLevel)] = &mut [(wakeup_pin, WakeupLevel::Low)];
-    let ext0 = RtcioWakeupSource::new(wakeup_pins);
+pub fn enter_deep(wakeup_pin: AnyPin<'static>, rtc_cntl: LPWR<'static>, interval: Duration) -> ! {
+    // The button pulls the pad low; hold it high the rest of the time so the
+    // pad only wakes the chip on an actual press, not while floating.
+    let mut wakeup_pin = Input::new(wakeup_pin, InputConfig::default().with_pull(Pull::Up));
+    wakeup_pin
+        .apply_wakeup_config(&WakeupConfig::default().with_low_power_path(true))
+        .unwrap();
+    wakeup_pin.listen(Event::LowLevel);
 
-    let wakeup_source_timer = TimerWakeupSource::new(interval.into());
+    let mut lpwr = LowPower::new(rtc_cntl);
+    let deadline = Instant::now() + HalDuration::from_micros(interval.as_micros());
+    lpwr.set_wakeup_deadline(deadline);
 
-    let mut rtc = Rtc::new(rtc_cntl);
-
-    let mut config = RtcSleepConfig::deep();
-    config.set_rtc_fastmem_pd_en(false);
-
-    rtc.sleep(&config, &[&ext0, &wakeup_source_timer]);
-    unreachable!();
+    lpwr.sleep_deep(RtcSleepConfig::deep());
 }

@@ -6,7 +6,10 @@ use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, signal::Signal}
 use embassy_time::{Duration, Timer};
 use esp_hal::peripherals;
 use esp_hal::rng::Rng;
-use esp_radio::wifi::{ControllerConfig, Interface, WifiController, WifiError, sta::StationConfig};
+use esp_radio::wifi::{
+    AuthenticationMethodConfig, ControllerConfig, Interface, WifiController, WifiError,
+    sta::StationConfig,
+};
 use log::{error, info};
 use static_cell::StaticCell;
 
@@ -24,8 +27,10 @@ pub async fn connect_to_wifi(
 ) -> Result<Stack<'static>, WifiError> {
     let station_config = esp_radio::wifi::Config::Station(
         StationConfig::default()
-            .with_ssid(env!("WIFI_SSID"))
-            .with_password(env!("WIFI_PSK").into()),
+            .with_ssid(env!("WIFI_SSID").try_into().expect("invalid WIFI_SSID"))
+            .with_authentication(AuthenticationMethodConfig::Wpa2Personal(
+                env!("WIFI_PSK").try_into().expect("invalid WIFI_PSK"),
+            )),
     );
 
     let controller = esp_radio::wifi::WifiController::new(

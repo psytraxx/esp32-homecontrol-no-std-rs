@@ -24,8 +24,8 @@ use esp_hal::{
     clock::CpuClock,
     gpio::{Level, Output, OutputConfig, Pin},
     peripherals::WIFI,
-    rtc_cntl::{SocResetReason, wakeup_cause},
-    system::{SleepSource, reset_reason},
+    rtc_cntl::{SocResetReason, WakeupSource, wakeup_cause},
+    system::reset_reason,
     timer::timg::TimerGroup,
 };
 use esp_println::logger::init_logger;
@@ -69,7 +69,7 @@ async fn main(spawner: Spawner) {
 
     // Timer wakes are unattended; button wakes and any other wake (e.g. cold
     // boot / USB reset, which is neither Ext0 nor Timer) have someone present.
-    let display_enabled = !matches!(wakeup_cause(), SleepSource::Timer);
+    let display_enabled = !wakeup_cause().contains(WakeupSource::Timer);
 
     let peripherals = esp_hal::init(Config::default().with_cpu_clock(CpuClock::_80MHz));
 
@@ -83,9 +83,7 @@ async fn main(spawner: Spawner) {
     }
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    let sw_interrupt =
-        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
-    esp_rtos::start(timg0.timer0, sw_interrupt.software_interrupt0);
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
     // GPIO15 must be HIGH for the display to receive power (even when display is unused).
     let mut power_pin = Output::new(peripherals.GPIO15, Level::Low, OutputConfig::default());
@@ -152,8 +150,11 @@ async fn main(spawner: Spawner) {
     info!("Enter deep sleep for {}s", DEEP_SLEEP_DURATION_SECONDS);
     // Give the USB CDC logger time to flush pending output before powering down
     Timer::after(Duration::from_millis(100)).await;
-    let mut wake_up_btn_pin = peripherals.GPIO14;
-    enter_deep(&mut wake_up_btn_pin, peripherals.LPWR, deep_sleep_duration);
+    enter_deep(
+        peripherals.GPIO14.degrade(),
+        peripherals.LPWR,
+        deep_sleep_duration,
+    );
 }
 
 /// One linear wake cycle: connect WiFi while sampling sensors, show the

@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-esp-hal = { version = "1.1.1", features = ["esp32s3", "log-04", "unstable"] }
+esp-hal = { version = "1.2.1", features = ["esp32s3", "log-04", "unstable"] }
 
-esp-rtos = { version = "0.3.0", features = [
+esp-rtos = { version = "0.4.0", features = [
     "embassy",
     "esp-alloc",
     "esp-radio",
@@ -14,7 +14,7 @@ esp-rtos = { version = "0.3.0", features = [
     "log-04",
 ] }
 
-esp-bootloader-esp-idf = { version = "0.5.0", features = ["esp32s3", "log-04"] }
+esp-bootloader-esp-idf = { version = "0.6.0", features = ["esp32s3", "log-04"] }
 log = "0.4.33"
 
 embassy-net = { version = "0.9.1", features = [
@@ -25,7 +25,7 @@ embassy-net = { version = "0.9.1", features = [
     "udp",
     "dns",
 ] }
-esp-alloc = "0.10.0"
+esp-alloc = "0.11.0"
 esp-backtrace = { version = "0.20.0", features = [
     "esp32s3",
     "panic-handler",
@@ -35,7 +35,7 @@ esp-println = { version = "0.18.0", features = ["esp32s3", "log-04"] }
 # for more networking protocol support see https://crates.io/crates/edge-net
 embassy-executor = { version = "0.10.0", features = ["log"] }
 embassy-time = { version = "0.5.0", features = ["log"] }
-esp-radio = { version = "1.0.0-beta.0", features = [
+esp-radio = { version = "1.0.0-beta.1", features = [
     "esp-alloc",
     "esp32s3",
     "log-04",
