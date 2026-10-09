@@ -1,4 +1,4 @@
-# ESP32 Plant Watering System
+# ESP32 Plant Watering System (Archived) - Please check [C6 Matter version](https://github.com/psytraxx/esp32-homecontrol-matter)
 
 A microcontroller-based system for automated plant watering with ESP32. Monitor soil moisture and control the watering pump.
 
